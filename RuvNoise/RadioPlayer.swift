@@ -546,13 +546,13 @@ final class RadioPlayer {
         let dspRef = dsp
         let ring = bufferRing
         let nodeRef = playerNode!
-        var lastProcessedCount = 1  // we already processed the first one
+        let stream = bufferTriggerStream
 
         processTask = Task.detached {
-            for await _ in self.bufferTriggerStream {
+            var lastProcessedCount = 1  // we already processed the first one
+            for await _ in stream {
                 guard !Task.isCancelled else { break }
                 let all = ring.snapshot()
-                // Only process buffers we haven't seen yet
                 let newBuffers = Array(all.dropFirst(lastProcessedCount))
                 for buffer in newBuffers {
                     dspRef.process(buffer)
@@ -611,9 +611,10 @@ final class RadioPlayer {
         engine?.mainMixerNode.outputVolume = 0
         silenceTimer?.invalidate()
         silenceTimer = Timer.scheduledTimer(withTimeInterval: 0.12, repeats: false) { [weak self] _ in
+            let captured = self
             Task { @MainActor in
-                guard let self, !self.isMuted else { return }
-                self.engine?.mainMixerNode.outputVolume = 1
+                guard let s = captured, !s.isMuted else { return }
+                s.engine?.mainMixerNode.outputVolume = 1
             }
         }
     }
