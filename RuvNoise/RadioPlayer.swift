@@ -549,6 +549,7 @@ final class RadioPlayer {
         let item = AVPlayerItem(asset: asset)
 
         let ctx = TapContext()
+        ctx.kitchenMode = kitchenMode
         self.tapContext = ctx
         let ctxPointer = Unmanaged.passUnretained(ctx).toOpaque()
 
