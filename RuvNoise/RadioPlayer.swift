@@ -463,6 +463,8 @@ private func createProcessingTap(_ callbacks: inout MTAudioProcessingTapCallback
 @MainActor
 @Observable
 final class RadioPlayer {
+    nonisolated init() {}
+
     private var player: AVPlayer?
     private var tapContext: TapContext?
     private var playerObservation: NSKeyValueObservation?
@@ -514,8 +516,9 @@ final class RadioPlayer {
         self.player = avPlayer
 
         playerObservation = avPlayer.observe(\.timeControlStatus) { [weak self] _, _ in
+            let captured = self
             Task { @MainActor in
-                self?.updateState()
+                captured?.updateState()
             }
         }
 
