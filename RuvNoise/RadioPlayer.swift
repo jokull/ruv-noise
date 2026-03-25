@@ -431,10 +431,21 @@ final class RadioPlayer {
             process: tapProcess
         )
 
-        var tap: MTAudioProcessingTap?
-        let status = MTAudioProcessingTapCreate(kCFAllocatorDefault, &callbacks, kMTAudioProcessingTapCreationFlag_PostEffects, &tap)
+        let resolvedTap: MTAudioProcessingTap? = {
+            #if compiler(>=6.1)
+            // Xcode 26+ SDK: MTAudioProcessingTapCreate outputs MTAudioProcessingTap? directly
+            var tap: MTAudioProcessingTap?
+            let s = MTAudioProcessingTapCreate(kCFAllocatorDefault, &callbacks, kMTAudioProcessingTapCreationFlag_PostEffects, &tap)
+            return s == noErr ? tap : nil
+            #else
+            // Older SDKs: outputs Unmanaged<MTAudioProcessingTap>?
+            var tap: Unmanaged<MTAudioProcessingTap>?
+            let s = MTAudioProcessingTapCreate(kCFAllocatorDefault, &callbacks, kMTAudioProcessingTapCreationFlag_PostEffects, &tap)
+            return s == noErr ? tap?.takeRetainedValue() : nil
+            #endif
+        }()
 
-        if status == noErr, let tap = tap {
+        if let tap = resolvedTap {
             let audioMix = AVMutableAudioMix()
             if let audioTrack = try? await asset.loadTracks(withMediaType: .audio).first {
                 let params = AVMutableAudioMixInputParameters(track: audioTrack)

@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build
-        run: xcodebuild -project RuvNoise.xcodeproj -scheme RuvNoise -configuration Release -derivedDataPath build CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+        run: xcodebuild -project RuvNoise.xcodeproj -scheme RuvNoise -configuration Release -derivedDataPath build CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=YES CODE_SIGNING_ALLOWED=YES
 
       - name: Upload app
         uses: actions/upload-artifact@v4
