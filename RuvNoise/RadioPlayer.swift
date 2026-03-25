@@ -392,6 +392,26 @@ private func applyCompressor(_ data: UnsafeMutablePointer<Float>, frameCount: In
     }
 }
 
+// MARK: - MTAudioProcessingTap creation (handles SDK bridging differences)
+
+// C-level MTAudioProcessingTapCreate always takes a CFTypeRef* (void**) output.
+// The Swift bridging changed between SDK versions (Unmanaged vs direct), so we
+// call the C function directly to avoid type mismatches.
+@_silgen_name("MTAudioProcessingTapCreate")
+private func _MTAudioProcessingTapCreate(
+    _ allocator: CFAllocator?,
+    _ callbacks: UnsafePointer<MTAudioProcessingTapCallbacks>,
+    _ flags: MTAudioProcessingTapCreationFlags,
+    _ tapOut: UnsafeMutablePointer<Unmanaged<MTAudioProcessingTap>?>
+) -> OSStatus
+
+private func createProcessingTap(_ callbacks: inout MTAudioProcessingTapCallbacks) -> MTAudioProcessingTap? {
+    var tap: Unmanaged<MTAudioProcessingTap>?
+    let status = _MTAudioProcessingTapCreate(kCFAllocatorDefault, &callbacks, kMTAudioProcessingTapCreationFlag_PostEffects, &tap)
+    guard status == noErr else { return nil }
+    return tap?.takeRetainedValue()
+}
+
 // MARK: - RadioPlayer
 
 @MainActor
@@ -431,19 +451,7 @@ final class RadioPlayer {
             process: tapProcess
         )
 
-        let resolvedTap: MTAudioProcessingTap? = {
-            #if compiler(>=6.1)
-            // Xcode 26+ SDK: MTAudioProcessingTapCreate outputs MTAudioProcessingTap? directly
-            var tap: MTAudioProcessingTap?
-            let s = MTAudioProcessingTapCreate(kCFAllocatorDefault, &callbacks, kMTAudioProcessingTapCreationFlag_PostEffects, &tap)
-            return s == noErr ? tap : nil
-            #else
-            // Older SDKs: outputs Unmanaged<MTAudioProcessingTap>?
-            var tap: Unmanaged<MTAudioProcessingTap>?
-            let s = MTAudioProcessingTapCreate(kCFAllocatorDefault, &callbacks, kMTAudioProcessingTapCreationFlag_PostEffects, &tap)
-            return s == noErr ? tap?.takeRetainedValue() : nil
-            #endif
-        }()
+        let resolvedTap: MTAudioProcessingTap? = createProcessingTap(&callbacks)
 
         if let tap = resolvedTap {
             let audioMix = AVMutableAudioMix()
