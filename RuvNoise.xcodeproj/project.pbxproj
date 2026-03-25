@@ -10,6 +10,7 @@
 		A10001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20001 /* AppDelegate.swift */; };
 		A10002 /* RadioPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20002 /* RadioPlayer.swift */; };
 		A10003 /* PinkNoiseGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20003 /* PinkNoiseGenerator.swift */; };
+		A10004 /* NewsScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20007 /* NewsScheduler.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -19,6 +20,7 @@
 		A20004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A20005 /* RuvNoise.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = RuvNoise.entitlements; sourceTree = "<group>"; };
 		A20006 /* RuvNoise.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RuvNoise.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20007 /* NewsScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewsScheduler.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -46,6 +48,7 @@
 				A20001 /* AppDelegate.swift */,
 				A20002 /* RadioPlayer.swift */,
 				A20003 /* PinkNoiseGenerator.swift */,
+				A20007 /* NewsScheduler.swift */,
 				A20004 /* Info.plist */,
 				A20005 /* RuvNoise.entitlements */,
 			);
@@ -115,6 +118,7 @@
 				A10001 /* AppDelegate.swift in Sources */,
 				A10002 /* RadioPlayer.swift in Sources */,
 				A10003 /* PinkNoiseGenerator.swift in Sources */,
+				A10004 /* NewsScheduler.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
