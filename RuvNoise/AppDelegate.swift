@@ -13,6 +13,12 @@ struct RuvNoiseApp: App {
                 ))
             }
             Divider()
+            Toggle(isOn: Binding(
+                get: { player.kitchenMode },
+                set: { _ in player.toggleKitchenMode() }
+            )) {
+                Label("Kitchen Mode", systemImage: player.kitchenMode ? "frying.pan.fill" : "frying.pan")
+            }
             Button(player.isMuted ? "Unmute" : "Mute") {
                 player.toggleMute()
             }

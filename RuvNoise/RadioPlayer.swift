@@ -21,15 +21,27 @@ private final class TapContext {
     var crackleGen = CrackleGenerator()
 
     var sampleRate: Float = 44100
+    var kitchenMode = false                  // Toggled from RadioPlayer
 
     // Filter setups (created in configureBiquads)
-    var highPassSetup: OpaquePointer?       // HP 200 Hz
-    var lowPassSetup: OpaquePointer?        // LP 5.5 kHz
+    var highPassSetup: OpaquePointer?       // HP (200 Hz normal, 400 Hz kitchen)
+    var lowPassSetup: OpaquePointer?        // LP (5.5 kHz normal, 3 kHz kitchen)
     var midBoostSetup: OpaquePointer?       // Peaking 2.2 kHz +4 dB
     var bassBoostSetup: OpaquePointer?      // Peaking 180 Hz +2 dB
     var preEmphasisSetup: OpaquePointer?    // High shelf +3 dB at 3 kHz
     var deEmphasisSetup: OpaquePointer?     // High shelf -3 dB at 3 kHz
     var interstageSetup: OpaquePointer?     // LP 6 kHz between saturation stages
+
+    // Kitchen mode filter setups (narrower band, harsher)
+    var kitchenHPSetup: OpaquePointer?      // HP 400 Hz
+    var kitchenLPSetup: OpaquePointer?      // LP 3 kHz
+    var kitchenMidSetup: OpaquePointer?     // Peaking 1.5 kHz +6 dB (tinny)
+    var kitchenHPDelays = [Float](repeating: 0, count: 4)
+    var kitchenHPDelaysR = [Float](repeating: 0, count: 4)
+    var kitchenLPDelays = [Float](repeating: 0, count: 4)
+    var kitchenLPDelaysR = [Float](repeating: 0, count: 4)
+    var kitchenMidDelays = [Float](repeating: 0, count: 4)
+    var kitchenMidDelaysR = [Float](repeating: 0, count: 4)
 
     // Per-channel biquad delay state (L and R)
     var highPassDelays = [Float](repeating: 0, count: 4)
@@ -74,7 +86,8 @@ private final class TapContext {
 
     deinit {
         for setup in [highPassSetup, lowPassSetup, midBoostSetup, bassBoostSetup,
-                      preEmphasisSetup, deEmphasisSetup, interstageSetup] {
+                      preEmphasisSetup, deEmphasisSetup, interstageSetup,
+                      kitchenHPSetup, kitchenLPSetup, kitchenMidSetup] {
             if let s = setup { vDSP_biquad_DestroySetup(s) }
         }
     }
@@ -124,6 +137,17 @@ private final class TapContext {
         destroyAndCreate(&interstageSetup, Self.lowPassCoefficients(cutoff: 6000, sampleRate: sampleRate))
         interstageDelays = [Float](repeating: 0, count: 4)
         interstageDelaysR = [Float](repeating: 0, count: 4)
+
+        // Kitchen mode: narrower band, tinnier, more aggressive
+        destroyAndCreate(&kitchenHPSetup, Self.highPassCoefficients(cutoff: 400, sampleRate: sampleRate))
+        kitchenHPDelays = [Float](repeating: 0, count: 4)
+        kitchenHPDelaysR = [Float](repeating: 0, count: 4)
+        destroyAndCreate(&kitchenLPSetup, Self.lowPassCoefficients(cutoff: 3000, sampleRate: sampleRate))
+        kitchenLPDelays = [Float](repeating: 0, count: 4)
+        kitchenLPDelaysR = [Float](repeating: 0, count: 4)
+        destroyAndCreate(&kitchenMidSetup, Self.peakingEQCoefficients(centerFreq: 1500, gainDB: 6, Q: 1.2, sampleRate: sampleRate))
+        kitchenMidDelays = [Float](repeating: 0, count: 4)
+        kitchenMidDelaysR = [Float](repeating: 0, count: 4)
     }
 
     private func destroyAndCreate(_ setup: inout OpaquePointer?, _ coeffs: [Double]) {
@@ -266,9 +290,10 @@ private func tapProcess(
         memcpy(data1, data0, frameCount * MemoryLayout<Float>.size)
     }
 
-    // Add pink noise + vinyl crackle
+    // Add pink noise + vinyl crackle (kitchen mode = 4x noise, more crackle)
+    let noiseScale: Float = ctx.kitchenMode ? 4.0 : 1.0
     for i in 0..<frameCount {
-        let noise = ctx.noiseGen.next() + ctx.crackleGen.next()
+        let noise = (ctx.noiseGen.next() + ctx.crackleGen.next()) * noiseScale
         data0[i] += noise
         if channelCount >= 2, let data1 = ablPointer[1].mData?.assumingMemoryBound(to: Float.self) {
             data1[i] += noise
@@ -291,30 +316,45 @@ private func processChannel(_ data: UnsafeMutablePointer<Float>, frameCount: Int
         }
     }
 
-    // 1. High-pass at 200 Hz — remove rumble
-    biquad(ctx.highPassSetup, &ctx.highPassDelays, &ctx.highPassDelaysR)
+    let kitchen = ctx.kitchenMode
+
+    // 1. High-pass — 200 Hz normal, 400 Hz kitchen (cut more bass = tinnier)
+    if kitchen {
+        biquad(ctx.kitchenHPSetup, &ctx.kitchenHPDelays, &ctx.kitchenHPDelaysR)
+    } else {
+        biquad(ctx.highPassSetup, &ctx.highPassDelays, &ctx.highPassDelaysR)
+    }
 
     // 2. 2nd harmonic exciter: y = x + amount * x²
+    let exciterAmt: Float = kitchen ? 0.35 : ctx.exciterAmount
     ctx.tempBuffer.withUnsafeMutableBufferPointer { tmp in
         vDSP_vsq(data, 1, tmp.baseAddress!, 1, n)
-        var amount = ctx.exciterAmount
+        var amount = exciterAmt
         vDSP_vsma(tmp.baseAddress!, 1, &amount, data, 1, data, 1, n)
     }
 
-    // 3. Mid-range presence boost (2.2 kHz, +4 dB)
-    biquad(ctx.midBoostSetup, &ctx.midBoostDelays, &ctx.midBoostDelaysR)
+    // 3. Mid-range presence boost
+    if kitchen {
+        biquad(ctx.kitchenMidSetup, &ctx.kitchenMidDelays, &ctx.kitchenMidDelaysR)
+    } else {
+        biquad(ctx.midBoostSetup, &ctx.midBoostDelays, &ctx.midBoostDelaysR)
+    }
 
     // 4. Tape pre-emphasis (high shelf +3 dB at 3 kHz)
     biquad(ctx.preEmphasisSetup, &ctx.preEmphDelays, &ctx.preEmphDelaysR)
 
-    // 5. Saturation stage 1 — asymmetric triode (drive=1.2, bias=0.15)
-    asymmetricSaturate(data, n: n, drive: ctx.drive1, bias: ctx.bias1, dcOffset: ctx.dcOffset1)
+    // 5. Saturation stage 1 — kitchen cranks the drive and bias
+    let d1: Float = kitchen ? 2.2 : ctx.drive1
+    let b1: Float = kitchen ? 0.3 : ctx.bias1
+    asymmetricSaturate(data, n: n, drive: d1, bias: b1, dcOffset: tanhf(b1 * d1))
 
     // 6. Interstage LP at 6 kHz (coupling capacitor sim)
     biquad(ctx.interstageSetup, &ctx.interstageDelays, &ctx.interstageDelaysR)
 
-    // 7. Saturation stage 2 — asymmetric triode (drive=1.4, bias=0.1)
-    asymmetricSaturate(data, n: n, drive: ctx.drive2, bias: ctx.bias2, dcOffset: ctx.dcOffset2)
+    // 7. Saturation stage 2
+    let d2: Float = kitchen ? 2.5 : ctx.drive2
+    let b2: Float = kitchen ? 0.25 : ctx.bias2
+    asymmetricSaturate(data, n: n, drive: d2, bias: b2, dcOffset: tanhf(b2 * d2))
 
     // 8. Tape de-emphasis (high shelf -3 dB at 3 kHz)
     biquad(ctx.deEmphasisSetup, &ctx.deEmphDelays, &ctx.deEmphDelaysR)
@@ -322,11 +362,17 @@ private func processChannel(_ data: UnsafeMutablePointer<Float>, frameCount: Int
     // 9. Soft-knee RMS compressor
     applyCompressor(data, frameCount: frameCount, ctx: ctx, isLeft: isLeft)
 
-    // 10. Low-pass at 5.5 kHz
-    biquad(ctx.lowPassSetup, &ctx.lowPassDelays, &ctx.lowPassDelaysR)
+    // 10. Low-pass — 5.5 kHz normal, 3 kHz kitchen (very muffled)
+    if kitchen {
+        biquad(ctx.kitchenLPSetup, &ctx.kitchenLPDelays, &ctx.kitchenLPDelaysR)
+    } else {
+        biquad(ctx.lowPassSetup, &ctx.lowPassDelays, &ctx.lowPassDelaysR)
+    }
 
-    // 11. Bass resonance bump (180 Hz, +2 dB)
-    biquad(ctx.bassBoostSetup, &ctx.bassBoostDelays, &ctx.bassBoostDelaysR)
+    // 11. Bass resonance bump (skip in kitchen — no bass in a tinny speaker)
+    if !kitchen {
+        biquad(ctx.bassBoostSetup, &ctx.bassBoostDelays, &ctx.bassBoostDelaysR)
+    }
 }
 
 // MARK: - Asymmetric tube saturation
@@ -424,6 +470,7 @@ final class RadioPlayer {
     private(set) var currentStation: Station?
     private(set) var isPlaying = false
     private(set) var isMuted = false
+    private(set) var kitchenMode = false
 
     func play(station: Station) async {
         if currentStation == station && player != nil {
@@ -489,6 +536,11 @@ final class RadioPlayer {
         guard let player else { return }
         player.isMuted.toggle()
         isMuted = player.isMuted
+    }
+
+    func toggleKitchenMode() {
+        kitchenMode.toggle()
+        tapContext?.kitchenMode = kitchenMode
     }
 
     private func updateState() {
