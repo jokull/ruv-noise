@@ -11,14 +11,37 @@ A tiny macOS menubar app that streams RÁS 1 and RÁS 2 with a lo-fi analog proc
 
 ## The Sound
 
-The audio runs through a real-time DSP pipeline designed to sound like a warm vintage tube radio:
+Three modes — switch from the menubar:
 
-- **Band shaping** — HP 200 Hz / LP 5.5 kHz with mid-range presence boost at 2.2 kHz
+### Lo-Fi (default)
+
+Warm vintage tube radio. The audio runs through a real-time DSP pipeline:
+
+- **Band shaping** — HP 200 Hz / LP 4.5 kHz with +6 dB mid-range presence at 2 kHz
 - **Tube saturation** — Two cascaded asymmetric triode stages with even harmonic exciter
 - **Tape coloring** — Pre/de-emphasis around the saturation for natural HF compression
 - **Soft compression** — RMS-based soft-knee compressor (slow attack, tube-like squish)
+- **FM detuning** — Slow volume drift, pilot tone flutter, faint mains hum — like being 0.5% off the wavelength
 - **Analog noise** — Pink noise floor + sparse vinyl crackle
 - **Mono collapse** — Stereo → mono, like a single-speaker radio
+
+### Kitchen Mode
+
+Radio in the other room. Two-stage spatial simulation:
+
+1. **Eldhús** — Small kitchen reverb (8ms, high feedback), standing wave resonance at 600 Hz
+2. **Doorway** — Low-pass at 1.2 kHz as sound passes through the door
+3. **Stofa** — Larger living room reverb (25ms, moderate feedback), room color at 250 Hz
+4. **Distance** — -6 dB attenuation, noise becomes relatively prominent
+
+### Clean
+
+Bypass all processing. Pure HLS stream for A/B comparison.
+
+## Features
+
+- Auto-tune for RÁS 1 news broadcasts (fetches schedule from RÚV GraphQL API)
+- Measures actual HLS live latency for precise auto-play timing
 
 ## Build
 
@@ -40,6 +63,6 @@ Requires macOS 14+ and Xcode 15+.
 ## Tech
 
 - Swift + SwiftUI `MenuBarExtra` (no dock icon)
-- AVFoundation for HLS streaming
-- `MTAudioProcessingTap` + vDSP/Accelerate for real-time DSP
+- Manual HLS segment fetching + `AVAudioEngine` for real-time DSP
+- vDSP/Accelerate biquad filters, asymmetric saturation, RMS compression
 - Native macOS — no Electron, no dependencies

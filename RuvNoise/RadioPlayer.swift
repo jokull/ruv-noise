@@ -14,49 +14,50 @@ enum Station: String, CaseIterable {
     }
 }
 
-// MARK: - DSP Context passed into MTAudioProcessingTap callbacks
+enum AudioMode: String, CaseIterable {
+    case clean = "Clean"
+    case lofi = "Lo-Fi"
+    case kitchen = "Kitchen Mode"
 
-private final class TapContext {
+    var systemImage: String {
+        switch self {
+        case .clean: "waveform"
+        case .lofi: "radio"
+        case .kitchen: "frying.pan"
+        }
+    }
+}
+
+// MARK: - DSP Context
+
+final class DSPContext {
     var noiseGen = PinkNoiseGenerator()
     var crackleGen = CrackleGenerator()
 
-    var sampleRate: Float = 44100
-    var kitchenMode = false                  // Toggled from RadioPlayer
+    var sampleRate: Float = 48000
+    var audioMode: AudioMode = .lofi
 
-    // Filter setups (created in configureBiquads)
-    var highPassSetup: OpaquePointer?       // HP (200 Hz normal, 400 Hz kitchen)
-    var lowPassSetup: OpaquePointer?        // LP (5.5 kHz normal, 3 kHz kitchen)
-    var midBoostSetup: OpaquePointer?       // Peaking 2.2 kHz +4 dB
-    var bassBoostSetup: OpaquePointer?      // Peaking 180 Hz +2 dB
-    var preEmphasisSetup: OpaquePointer?    // High shelf +3 dB at 3 kHz
-    var deEmphasisSetup: OpaquePointer?     // High shelf -3 dB at 3 kHz
-    var interstageSetup: OpaquePointer?     // LP 6 kHz between saturation stages
+    // FM detuning
+    var fmPhase: Float = 0
+    var fmFlutterPhase: Float = 0
+    var fmInterferencePhase: Float = 0
 
-    // Kitchen mode: "radio in the other room" simulation
-    var kitchenHPSetup: OpaquePointer?      // HP 200 Hz
-    var kitchenLP1Setup: OpaquePointer?     // LP 1000 Hz (wall absorption stage 1)
-    var kitchenLP2Setup: OpaquePointer?     // LP 800 Hz (wall absorption stage 2)
-    var kitchenDoorSetup: OpaquePointer?    // Peaking 700 Hz +6 dB Q=3 (doorway resonance)
-    var kitchenRoomSetup: OpaquePointer?    // Peaking 200 Hz +3 dB Q=1.0 (room mode)
-    var kitchenHPDelays = [Float](repeating: 0, count: 4)
-    var kitchenHPDelaysR = [Float](repeating: 0, count: 4)
-    var kitchenLP1Delays = [Float](repeating: 0, count: 4)
-    var kitchenLP1DelaysR = [Float](repeating: 0, count: 4)
-    var kitchenLP2Delays = [Float](repeating: 0, count: 4)
-    var kitchenLP2DelaysR = [Float](repeating: 0, count: 4)
-    var kitchenDoorDelays = [Float](repeating: 0, count: 4)
-    var kitchenDoorDelaysR = [Float](repeating: 0, count: 4)
-    var kitchenRoomDelays = [Float](repeating: 0, count: 4)
-    var kitchenRoomDelaysR = [Float](repeating: 0, count: 4)
+    // Filter setups
+    var highPassSetup: OpaquePointer?
+    var lowPassSetup: OpaquePointer?
+    var midBoostSetup: OpaquePointer?
+    var bassBoostSetup: OpaquePointer?
+    var preEmphasisSetup: OpaquePointer?
+    var deEmphasisSetup: OpaquePointer?
+    var interstageSetup: OpaquePointer?
 
-    // Feedback delay line for kitchen wall reflections.
-    // A short delay with feedback creates a decaying series of reflections
-    // simulating the small kitchen's reverberant field.
-    var kitchenDelayBuf = [Float](repeating: 0, count: 2048)
-    var kitchenDelayIdx: Int = 0
-    var kitchenDelaySamples: Int = 662      // ~15ms at 44100
+    // Kitchen mode
+    var kitchenHPSetup: OpaquePointer?
+    var kitchenDoorSetup: OpaquePointer?
+    var doorwayLPSetup: OpaquePointer?
+    var stofaColorSetup: OpaquePointer?
 
-    // Per-channel biquad delay state (L and R)
+    // Biquad delay states (L/R)
     var highPassDelays = [Float](repeating: 0, count: 4)
     var highPassDelaysR = [Float](repeating: 0, count: 4)
     var lowPassDelays = [Float](repeating: 0, count: 4)
@@ -71,185 +72,334 @@ private final class TapContext {
     var deEmphDelaysR = [Float](repeating: 0, count: 4)
     var interstageDelays = [Float](repeating: 0, count: 4)
     var interstageDelaysR = [Float](repeating: 0, count: 4)
+    var kitchenHPDelays = [Float](repeating: 0, count: 4)
+    var kitchenHPDelaysR = [Float](repeating: 0, count: 4)
+    var kitchenDoorDelays = [Float](repeating: 0, count: 4)
+    var kitchenDoorDelaysR = [Float](repeating: 0, count: 4)
+    var doorwayLPDelays = [Float](repeating: 0, count: 4)
+    var doorwayLPDelaysR = [Float](repeating: 0, count: 4)
+    var stofaColorDelays = [Float](repeating: 0, count: 4)
+    var stofaColorDelaysR = [Float](repeating: 0, count: 4)
 
-    // Compressor state per channel
+    // Room reverb delay lines
+    var eldhusDelayBuf = [Float](repeating: 0, count: 2048)
+    var eldhusDelayIdx: Int = 0
+    var eldhusDelaySamples: Int = 384
+    var stofaDelayBuf = [Float](repeating: 0, count: 4096)
+    var stofaDelayIdx: Int = 0
+    var stofaDelaySamples: Int = 1200
+
+    // Compressor
     var compEnvelopeL: Float = 0
     var compEnvelopeR: Float = 0
 
-    // Temp buffer for exciter x² computation
     var tempBuffer = [Float](repeating: 0, count: 8192)
 
-    // Saturation parameters
-    let drive1: Float = 1.2
-    let bias1: Float = 0.15
+    // Saturation — subtle warmth, not destruction
+    let drive1: Float = 1.3
+    let bias1: Float = 0.12
     let drive2: Float = 1.4
-    let bias2: Float = 0.1
-    let exciterAmount: Float = 0.15
+    let bias2: Float = 0.08
+    let exciterAmount: Float = 0.10
 
-    // Compressor parameters
-    let compThreshold: Float = 0.25    // ~-12 dBFS
+    let compThreshold: Float = 0.25
     let compRatio: Float = 3.0
-    let compKneeWidth: Float = 0.25    // in linear amplitude
+    let compKneeWidth: Float = 0.25
     var compAttackCoeff: Float = 0
     var compReleaseCoeff: Float = 0
-
-    // DC offset corrections (precomputed)
     var dcOffset1: Float = 0
     var dcOffset2: Float = 0
 
     deinit {
         for setup in [highPassSetup, lowPassSetup, midBoostSetup, bassBoostSetup,
                       preEmphasisSetup, deEmphasisSetup, interstageSetup,
-                      kitchenHPSetup, kitchenLP1Setup, kitchenLP2Setup,
-                      kitchenDoorSetup, kitchenRoomSetup] {
+                      kitchenHPSetup, kitchenDoorSetup, doorwayLPSetup,
+                      stofaColorSetup] {
             if let s = setup { vDSP_biquad_DestroySetup(s) }
         }
     }
 
-    func configureBiquads(sampleRate: Double) {
+    func configure(sampleRate: Double) {
         self.sampleRate = Float(sampleRate)
-
-        // Precompute compressor coefficients
-        compAttackCoeff = expf(-1.0 / (self.sampleRate * 0.020))   // 20 ms attack
-        compReleaseCoeff = expf(-1.0 / (self.sampleRate * 0.150))  // 150 ms release
-
-        // Precompute DC offset corrections for asymmetric saturation
+        compAttackCoeff = expf(-1.0 / (self.sampleRate * 0.020))
+        compReleaseCoeff = expf(-1.0 / (self.sampleRate * 0.150))
         dcOffset1 = tanhf(bias1 * drive1)
         dcOffset2 = tanhf(bias2 * drive2)
 
-        // HP at 200 Hz
-        destroyAndCreate(&highPassSetup, Self.highPassCoefficients(cutoff: 200, sampleRate: sampleRate))
-        highPassDelays = [Float](repeating: 0, count: 4)
-        highPassDelaysR = [Float](repeating: 0, count: 4)
+        setup(&highPassSetup, Self.highPassCoeffs(cutoff: 200, sr: sampleRate))
+        setup(&lowPassSetup, Self.lowPassCoeffs(cutoff: 5500, sr: sampleRate))
+        setup(&midBoostSetup, Self.peakingEQCoeffs(freq: 2200, gainDB: 3, Q: 0.8, sr: sampleRate))
+        setup(&bassBoostSetup, Self.peakingEQCoeffs(freq: 180, gainDB: 2, Q: 0.7, sr: sampleRate))
+        setup(&preEmphasisSetup, Self.highShelfCoeffs(freq: 3000, gainDB: 3, sr: sampleRate))
+        setup(&deEmphasisSetup, Self.highShelfCoeffs(freq: 3000, gainDB: -3, sr: sampleRate))
+        setup(&interstageSetup, Self.lowPassCoeffs(cutoff: 6000, sr: sampleRate))
 
-        // LP at 5500 Hz
-        destroyAndCreate(&lowPassSetup, Self.lowPassCoefficients(cutoff: 5500, sampleRate: sampleRate))
-        lowPassDelays = [Float](repeating: 0, count: 4)
-        lowPassDelaysR = [Float](repeating: 0, count: 4)
+        setup(&kitchenHPSetup, Self.highPassCoeffs(cutoff: 200, sr: sampleRate))
+        setup(&kitchenDoorSetup, Self.peakingEQCoeffs(freq: 600, gainDB: 6, Q: 2.0, sr: sampleRate))
+        setup(&doorwayLPSetup, Self.lowPassCoeffs(cutoff: 1200, sr: sampleRate))
+        setup(&stofaColorSetup, Self.peakingEQCoeffs(freq: 250, gainDB: 3, Q: 0.8, sr: sampleRate))
 
-        // Mid presence boost: 2.2 kHz, +4 dB, Q=0.8
-        destroyAndCreate(&midBoostSetup, Self.peakingEQCoefficients(centerFreq: 2200, gainDB: 4, Q: 0.8, sampleRate: sampleRate))
-        midBoostDelays = [Float](repeating: 0, count: 4)
-        midBoostDelaysR = [Float](repeating: 0, count: 4)
+        eldhusDelaySamples = Int(sampleRate * 0.008)
+        eldhusDelayBuf = [Float](repeating: 0, count: max(eldhusDelaySamples + 1, 2048))
+        eldhusDelayIdx = 0
+        stofaDelaySamples = Int(sampleRate * 0.025)
+        stofaDelayBuf = [Float](repeating: 0, count: max(stofaDelaySamples + 1, 4096))
+        stofaDelayIdx = 0
 
-        // Bass resonance: 180 Hz, +2 dB, Q=0.7
-        destroyAndCreate(&bassBoostSetup, Self.peakingEQCoefficients(centerFreq: 180, gainDB: 2, Q: 0.7, sampleRate: sampleRate))
-        bassBoostDelays = [Float](repeating: 0, count: 4)
-        bassBoostDelaysR = [Float](repeating: 0, count: 4)
-
-        // Tape pre-emphasis: high shelf +3 dB at 3 kHz
-        destroyAndCreate(&preEmphasisSetup, Self.highShelfCoefficients(freq: 3000, gainDB: 3, sampleRate: sampleRate))
-        preEmphDelays = [Float](repeating: 0, count: 4)
-        preEmphDelaysR = [Float](repeating: 0, count: 4)
-
-        // Tape de-emphasis: high shelf -3 dB at 3 kHz
-        destroyAndCreate(&deEmphasisSetup, Self.highShelfCoefficients(freq: 3000, gainDB: -3, sampleRate: sampleRate))
-        deEmphDelays = [Float](repeating: 0, count: 4)
-        deEmphDelaysR = [Float](repeating: 0, count: 4)
-
-        // Interstage LP at 6 kHz
-        destroyAndCreate(&interstageSetup, Self.lowPassCoefficients(cutoff: 6000, sampleRate: sampleRate))
-        interstageDelays = [Float](repeating: 0, count: 4)
-        interstageDelaysR = [Float](repeating: 0, count: 4)
-
-        // Kitchen mode: "radio in the other room" — heavily muffled through walls
-        destroyAndCreate(&kitchenHPSetup, Self.highPassCoefficients(cutoff: 200, sampleRate: sampleRate))
-        kitchenHPDelays = [Float](repeating: 0, count: 4)
-        kitchenHPDelaysR = [Float](repeating: 0, count: 4)
-        // Cascaded LP for aggressive wall absorption — kills everything above ~800 Hz
-        destroyAndCreate(&kitchenLP1Setup, Self.lowPassCoefficients(cutoff: 1000, sampleRate: sampleRate))
-        kitchenLP1Delays = [Float](repeating: 0, count: 4)
-        kitchenLP1DelaysR = [Float](repeating: 0, count: 4)
-        destroyAndCreate(&kitchenLP2Setup, Self.lowPassCoefficients(cutoff: 800, sampleRate: sampleRate))
-        kitchenLP2Delays = [Float](repeating: 0, count: 4)
-        kitchenLP2DelaysR = [Float](repeating: 0, count: 4)
-        // Doorway resonance — strong nasal coloring from sound funneling through the opening
-        destroyAndCreate(&kitchenDoorSetup, Self.peakingEQCoefficients(centerFreq: 700, gainDB: 6, Q: 3.0, sampleRate: sampleRate))
-        kitchenDoorDelays = [Float](repeating: 0, count: 4)
-        kitchenDoorDelaysR = [Float](repeating: 0, count: 4)
-        // Room mode from kitchen standing waves
-        destroyAndCreate(&kitchenRoomSetup, Self.peakingEQCoefficients(centerFreq: 200, gainDB: 3, Q: 1.0, sampleRate: sampleRate))
-        kitchenRoomDelays = [Float](repeating: 0, count: 4)
-        kitchenRoomDelaysR = [Float](repeating: 0, count: 4)
-        // Feedback delay line for kitchen wall reflections (~15ms)
-        kitchenDelaySamples = Int(sampleRate * 0.015)
-        kitchenDelayBuf = [Float](repeating: 0, count: max(kitchenDelaySamples + 1, 2048))
-        kitchenDelayIdx = 0
+        resetDelays()
     }
 
-    private func destroyAndCreate(_ setup: inout OpaquePointer?, _ coeffs: [Double]) {
-        if let s = setup { vDSP_biquad_DestroySetup(s) }
-        setup = vDSP_biquad_CreateSetup(coeffs, 1)
+    private func setup(_ ptr: inout OpaquePointer?, _ coeffs: [Double]) {
+        if let s = ptr { vDSP_biquad_DestroySetup(s) }
+        ptr = vDSP_biquad_CreateSetup(coeffs, 1)
+    }
+
+    private func resetDelays() {
+        let zero4 = [Float](repeating: 0, count: 4)
+        highPassDelays = zero4; highPassDelaysR = zero4
+        lowPassDelays = zero4; lowPassDelaysR = zero4
+        midBoostDelays = zero4; midBoostDelaysR = zero4
+        bassBoostDelays = zero4; bassBoostDelaysR = zero4
+        preEmphDelays = zero4; preEmphDelaysR = zero4
+        deEmphDelays = zero4; deEmphDelaysR = zero4
+        interstageDelays = zero4; interstageDelaysR = zero4
+        kitchenHPDelays = zero4; kitchenHPDelaysR = zero4
+        kitchenDoorDelays = zero4; kitchenDoorDelaysR = zero4
+        doorwayLPDelays = zero4; doorwayLPDelaysR = zero4
+        stofaColorDelays = zero4; stofaColorDelaysR = zero4
+    }
+
+    // MARK: - Process a buffer in-place
+
+    func process(_ buffer: AVAudioPCMBuffer) {
+        guard let channelData = buffer.floatChannelData else { return }
+        let frameCount = Int(buffer.frameLength)
+        let channelCount = Int(buffer.format.channelCount)
+
+        if tempBuffer.count < frameCount {
+            tempBuffer = [Float](repeating: 0, count: frameCount)
+        }
+
+        guard channelCount >= 1 else { return }
+
+        processChannel(channelData[0], frameCount: frameCount, isLeft: true)
+        if channelCount >= 2 {
+            processChannel(channelData[1], frameCount: frameCount, isLeft: false)
+
+            // Mono collapse
+            let n = vDSP_Length(frameCount)
+            vDSP_vadd(channelData[0], 1, channelData[1], 1, channelData[0], 1, n)
+            var half: Float = 0.5
+            vDSP_vsmul(channelData[0], 1, &half, channelData[0], 1, n)
+            memcpy(channelData[1], channelData[0], frameCount * MemoryLayout<Float>.size)
+        }
+
+        // Add noise (skip in clean)
+        guard audioMode != .clean else { return }
+        let noiseScale: Float = audioMode == .kitchen ? 1.5 : 1.0
+        for i in 0..<frameCount {
+            let noise = (noiseGen.next() + crackleGen.next()) * noiseScale
+            channelData[0][i] += noise
+            if channelCount >= 2 { channelData[1][i] += noise }
+        }
+    }
+
+    // MARK: - Per-channel DSP
+
+    private func processChannel(_ data: UnsafeMutablePointer<Float>, frameCount: Int, isLeft: Bool) {
+        let n = vDSP_Length(frameCount)
+
+        if audioMode == .clean { return }
+
+        func bq(_ setup: OpaquePointer?, _ dL: inout [Float], _ dR: inout [Float]) {
+            guard let s = setup else { return }
+            if isLeft { vDSP_biquad(s, &dL, data, 1, data, 1, n) }
+            else { vDSP_biquad(s, &dR, data, 1, data, 1, n) }
+        }
+
+        let kitchen = audioMode == .kitchen
+
+        // 1. HP
+        if kitchen { bq(kitchenHPSetup, &kitchenHPDelays, &kitchenHPDelaysR) }
+        else { bq(highPassSetup, &highPassDelays, &highPassDelaysR) }
+
+        // 2. Exciter (skip kitchen)
+        if !kitchen {
+            tempBuffer.withUnsafeMutableBufferPointer { tmp in
+                vDSP_vsq(data, 1, tmp.baseAddress!, 1, n)
+                var amt = exciterAmount
+                vDSP_vsma(tmp.baseAddress!, 1, &amt, data, 1, data, 1, n)
+            }
+        }
+
+        // 3. Mid boost / kitchen resonance
+        if kitchen { bq(kitchenDoorSetup, &kitchenDoorDelays, &kitchenDoorDelaysR) }
+        else { bq(midBoostSetup, &midBoostDelays, &midBoostDelaysR) }
+
+        // 4. Pre-emphasis (skip kitchen)
+        if !kitchen { bq(preEmphasisSetup, &preEmphDelays, &preEmphDelaysR) }
+
+        // 5. Saturation stage 1
+        let d1: Float = kitchen ? 0.8 : drive1
+        let b1: Float = kitchen ? 0.05 : bias1
+        saturate(data, n: n, drive: d1, bias: b1, dcOffset: tanhf(b1 * d1))
+
+        // 6. Interstage LP
+        bq(interstageSetup, &interstageDelays, &interstageDelaysR)
+
+        // 7. Saturation stage 2
+        let d2: Float = kitchen ? 0.9 : drive2
+        let b2: Float = kitchen ? 0.03 : bias2
+        saturate(data, n: n, drive: d2, bias: b2, dcOffset: tanhf(b2 * d2))
+
+        // 8. De-emphasis (skip kitchen)
+        if !kitchen { bq(deEmphasisSetup, &deEmphDelays, &deEmphDelaysR) }
+
+        // 9. Compressor
+        compressor(data, frameCount: frameCount, isLeft: isLeft)
+
+        // 9.5. FM detuning (lo-fi only)
+        if !kitchen { fmDetune(data, frameCount: frameCount) }
+
+        if kitchen {
+            // Eldhús reverb
+            bq(kitchenDoorSetup, &kitchenDoorDelays, &kitchenDoorDelaysR)
+            applyDelay(data, frameCount: frameCount, buf: &eldhusDelayBuf, idx: &eldhusDelayIdx,
+                       samples: eldhusDelaySamples, feedback: 0.55, wet: 0.60, dry: 0.50)
+
+            // Doorway LP
+            bq(doorwayLPSetup, &doorwayLPDelays, &doorwayLPDelaysR)
+
+            // Stofa reverb
+            bq(stofaColorSetup, &stofaColorDelays, &stofaColorDelaysR)
+            applyDelay(data, frameCount: frameCount, buf: &stofaDelayBuf, idx: &stofaDelayIdx,
+                       samples: stofaDelaySamples, feedback: 0.35, wet: 0.40, dry: 0.65)
+
+            // Distance attenuation
+            var gain: Float = 0.50
+            vDSP_vsmul(data, 1, &gain, data, 1, n)
+        } else {
+            // Normal LP + bass
+            bq(lowPassSetup, &lowPassDelays, &lowPassDelaysR)
+            bq(bassBoostSetup, &bassBoostDelays, &bassBoostDelaysR)
+        }
+    }
+
+    // MARK: - DSP primitives
+
+    private func saturate(_ data: UnsafeMutablePointer<Float>, n: vDSP_Length, drive: Float, bias: Float, dcOffset: Float) {
+        var b = bias; vDSP_vsadd(data, 1, &b, data, 1, n)
+        var d = drive; vDSP_vsmul(data, 1, &d, data, 1, n)
+        var count = Int32(n); vvtanhf(data, data, &count)
+        var negDC = -dcOffset; vDSP_vsadd(data, 1, &negDC, data, 1, n)
+    }
+
+    private func compressor(_ data: UnsafeMutablePointer<Float>, frameCount: Int, isLeft: Bool) {
+        let n = vDSP_Length(frameCount)
+        var meansq: Float = 0
+        vDSP_measqv(data, 1, &meansq, n)
+        let rms = sqrtf(meansq)
+
+        var envelope = isLeft ? compEnvelopeL : compEnvelopeR
+        let coeff = rms > envelope ? compAttackCoeff : compReleaseCoeff
+        envelope = coeff * envelope + (1 - coeff) * rms
+        if isLeft { compEnvelopeL = envelope } else { compEnvelopeR = envelope }
+
+        let threshold = compThreshold
+        let knee = compKneeWidth
+        var gainReduction: Float = 1.0
+
+        if envelope > threshold + knee / 2 {
+            let overDB = 20 * log10f(envelope / threshold)
+            let compressedDB = overDB / compRatio
+            gainReduction = powf(10, (compressedDB - overDB) / 20)
+        } else if envelope > threshold - knee / 2 {
+            let x = envelope - (threshold - knee / 2)
+            let kneeRatio = x / knee
+            let effectiveRatio = 1.0 + (compRatio - 1.0) * kneeRatio
+            let overDB = 20 * log10f(envelope / threshold)
+            let compressedDB = overDB / effectiveRatio
+            gainReduction = powf(10, (compressedDB - overDB) / 20)
+        }
+
+        if gainReduction < 1.0 {
+            vDSP_vsmul(data, 1, &gainReduction, data, 1, n)
+        }
+    }
+
+    private func fmDetune(_ data: UnsafeMutablePointer<Float>, frameCount: Int) {
+        let sr = sampleRate
+        let driftRate: Float = 0.3 * 2 * .pi / sr
+        let flutterRate: Float = 7.0 * 2 * .pi / sr
+        let buzzRate: Float = 61.0 * 2 * .pi / sr
+        let driftDepth: Float = 0.06
+        let flutterDepth: Float = 0.03
+        let buzzLevel: Float = 0.008
+
+        for i in 0..<frameCount {
+            let drift = 1.0 + driftDepth * sinf(fmPhase)
+            let flutter = 1.0 + flutterDepth * sinf(fmFlutterPhase)
+            let buzz = buzzLevel * sinf(fmInterferencePhase)
+            data[i] = data[i] * drift * flutter + buzz
+            fmPhase += driftRate
+            fmFlutterPhase += flutterRate
+            fmInterferencePhase += buzzRate
+        }
+        if fmPhase > 2 * .pi { fmPhase -= 2 * .pi }
+        if fmFlutterPhase > 2 * .pi { fmFlutterPhase -= 2 * .pi }
+        if fmInterferencePhase > 2 * .pi { fmInterferencePhase -= 2 * .pi }
+    }
+
+    private func applyDelay(_ data: UnsafeMutablePointer<Float>, frameCount: Int,
+                            buf: inout [Float], idx: inout Int,
+                            samples: Int, feedback: Float, wet: Float, dry: Float) {
+        let bufLen = buf.count
+        for i in 0..<frameCount {
+            let readIdx = (idx - samples + bufLen) % bufLen
+            let delayed = buf[readIdx]
+            buf[idx] = data[i] + delayed * feedback
+            idx = (idx + 1) % bufLen
+            data[i] = data[i] * dry + delayed * wet
+        }
     }
 
     // MARK: - Biquad coefficient calculators
 
-    static func highPassCoefficients(cutoff: Double, sampleRate: Double) -> [Double] {
-        let w0 = 2.0 * Double.pi * cutoff / sampleRate
+    static func highPassCoeffs(cutoff: Double, sr: Double) -> [Double] {
+        let w0 = 2.0 * .pi * cutoff / sr
         let alpha = sin(w0) / (2.0 * sqrt(2.0))
-        let cosW0 = cos(w0)
-        let a0 = 1.0 + alpha
-        return [
-            ((1.0 + cosW0) / 2.0) / a0,
-            (-(1.0 + cosW0)) / a0,
-            ((1.0 + cosW0) / 2.0) / a0,
-            (-2.0 * cosW0) / a0,
-            (1.0 - alpha) / a0,
-        ]
+        let c = cos(w0); let a0 = 1.0 + alpha
+        return [((1+c)/2)/a0, (-(1+c))/a0, ((1+c)/2)/a0, (-2*c)/a0, (1-alpha)/a0]
     }
 
-    static func lowPassCoefficients(cutoff: Double, sampleRate: Double) -> [Double] {
-        let w0 = 2.0 * Double.pi * cutoff / sampleRate
+    static func lowPassCoeffs(cutoff: Double, sr: Double) -> [Double] {
+        let w0 = 2.0 * .pi * cutoff / sr
         let alpha = sin(w0) / (2.0 * sqrt(2.0))
-        let cosW0 = cos(w0)
-        let a0 = 1.0 + alpha
-        return [
-            ((1.0 - cosW0) / 2.0) / a0,
-            (1.0 - cosW0) / a0,
-            ((1.0 - cosW0) / 2.0) / a0,
-            (-2.0 * cosW0) / a0,
-            (1.0 - alpha) / a0,
-        ]
+        let c = cos(w0); let a0 = 1.0 + alpha
+        return [((1-c)/2)/a0, (1-c)/a0, ((1-c)/2)/a0, (-2*c)/a0, (1-alpha)/a0]
     }
 
-    static func peakingEQCoefficients(centerFreq: Double, gainDB: Double, Q: Double, sampleRate: Double) -> [Double] {
-        let A = pow(10.0, gainDB / 40.0)
-        let w0 = 2.0 * Double.pi * centerFreq / sampleRate
-        let alpha = sin(w0) / (2.0 * Q)
-        let cosW0 = cos(w0)
-        let a0 = 1.0 + alpha / A
-        return [
-            (1.0 + alpha * A) / a0,
-            (-2.0 * cosW0) / a0,
-            (1.0 - alpha * A) / a0,
-            (-2.0 * cosW0) / a0,
-            (1.0 - alpha / A) / a0,
-        ]
+    static func peakingEQCoeffs(freq: Double, gainDB: Double, Q: Double, sr: Double) -> [Double] {
+        let A = pow(10, gainDB/40); let w0 = 2 * .pi * freq / sr
+        let alpha = sin(w0)/(2*Q); let c = cos(w0); let a0 = 1+alpha/A
+        return [(1+alpha*A)/a0, (-2*c)/a0, (1-alpha*A)/a0, (-2*c)/a0, (1-alpha/A)/a0]
     }
 
-    static func highShelfCoefficients(freq: Double, gainDB: Double, sampleRate: Double) -> [Double] {
-        let A = pow(10.0, gainDB / 40.0)
-        let w0 = 2.0 * Double.pi * freq / sampleRate
-        let S = 0.7
-        let alpha = sin(w0) / 2.0 * sqrt((A + 1.0 / A) * (1.0 / S - 1.0) + 2.0)
-        let cosW0 = cos(w0)
-        let sqrtA2alpha = 2.0 * sqrt(A) * alpha
-        let a0 = (A + 1) - (A - 1) * cosW0 + sqrtA2alpha
-        return [
-            (A * ((A + 1) + (A - 1) * cosW0 + sqrtA2alpha)) / a0,
-            (-2 * A * ((A - 1) + (A + 1) * cosW0)) / a0,
-            (A * ((A + 1) + (A - 1) * cosW0 - sqrtA2alpha)) / a0,
-            (2 * ((A - 1) - (A + 1) * cosW0)) / a0,
-            ((A + 1) - (A - 1) * cosW0 - sqrtA2alpha) / a0,
-        ]
+    static func highShelfCoeffs(freq: Double, gainDB: Double, sr: Double) -> [Double] {
+        let A = pow(10, gainDB/40); let w0 = 2 * .pi * freq / sr
+        let alpha = sin(w0)/2 * sqrt((A+1/A)*(1/0.7-1)+2)
+        let c = cos(w0); let s2a = 2*sqrt(A)*alpha
+        let a0 = (A+1)-(A-1)*c+s2a
+        return [A*((A+1)+(A-1)*c+s2a)/a0, -2*A*((A-1)+(A+1)*c)/a0,
+                A*((A+1)+(A-1)*c-s2a)/a0, 2*((A-1)-(A+1)*c)/a0, ((A+1)-(A-1)*c-s2a)/a0]
     }
 }
 
-// MARK: - Vinyl crackle generator
+// MARK: - Vinyl crackle
 
 struct CrackleGenerator {
-    var density: Float = 0.0003
-    var amplitude: Float = 0.04
+    var density: Float = 0.0002
+    var amplitude: Float = 0.03
 
     mutating func next() -> Float {
         guard Float.random(in: 0...1) < density else { return 0 }
@@ -258,286 +408,70 @@ struct CrackleGenerator {
     }
 }
 
-// MARK: - MTAudioProcessingTap callbacks
-
-private func tapInit(
-    tap: MTAudioProcessingTap,
-    clientInfo: UnsafeMutableRawPointer?,
-    tapStorageOut: UnsafeMutablePointer<UnsafeMutableRawPointer?>
-) {
-    tapStorageOut.pointee = clientInfo
-}
-
-private func tapFinalize(tap: MTAudioProcessingTap) {}
-
-private func tapPrepare(
-    tap: MTAudioProcessingTap,
-    maxFrames: CMItemCount,
-    processingFormat: UnsafePointer<AudioStreamBasicDescription>
-) {
-    let ctx = Unmanaged<TapContext>.fromOpaque(MTAudioProcessingTapGetStorage(tap)).takeUnretainedValue()
-    ctx.configureBiquads(sampleRate: processingFormat.pointee.mSampleRate)
-    // Ensure temp buffer is large enough
-    if ctx.tempBuffer.count < Int(maxFrames) {
-        ctx.tempBuffer = [Float](repeating: 0, count: Int(maxFrames))
-    }
-}
-
-private func tapUnprepare(tap: MTAudioProcessingTap) {}
-
-private func tapProcess(
-    tap: MTAudioProcessingTap,
-    numberFrames: CMItemCount,
-    flags: MTAudioProcessingTapFlags,
-    bufferListInOut: UnsafeMutablePointer<AudioBufferList>,
-    numberFramesOut: UnsafeMutablePointer<CMItemCount>,
-    flagsOut: UnsafeMutablePointer<MTAudioProcessingTapFlags>
-) {
-    var sourceFlags = MTAudioProcessingTapFlags(0)
-    let status = MTAudioProcessingTapGetSourceAudio(tap, numberFrames, bufferListInOut, &sourceFlags, nil, numberFramesOut)
-    guard status == noErr else { return }
-
-    let ctx = Unmanaged<TapContext>.fromOpaque(MTAudioProcessingTapGetStorage(tap)).takeUnretainedValue()
-    let frameCount = Int(numberFramesOut.pointee)
-
-    let ablPointer = UnsafeMutableAudioBufferListPointer(bufferListInOut)
-    let channelCount = ablPointer.count
-
-    guard channelCount >= 1, let data0 = ablPointer[0].mData?.assumingMemoryBound(to: Float.self) else { return }
-
-    processChannel(data0, frameCount: frameCount, ctx: ctx, isLeft: true)
-
-    if channelCount >= 2, let data1 = ablPointer[1].mData?.assumingMemoryBound(to: Float.self) {
-        processChannel(data1, frameCount: frameCount, ctx: ctx, isLeft: false)
-
-        // Mono collapse: average L+R
-        vDSP_vadd(data0, 1, data1, 1, data0, 1, vDSP_Length(frameCount))
-        var half: Float = 0.5
-        vDSP_vsmul(data0, 1, &half, data0, 1, vDSP_Length(frameCount))
-        memcpy(data1, data0, frameCount * MemoryLayout<Float>.size)
-    }
-
-    // Add pink noise + vinyl crackle.
-    // Kitchen mode uses 1.5x noise (less than before, but the -10 dB signal
-    // attenuation makes it relatively much more prominent — like room ambience).
-    let noiseScale: Float = ctx.kitchenMode ? 1.5 : 1.0
-    for i in 0..<frameCount {
-        let noise = (ctx.noiseGen.next() + ctx.crackleGen.next()) * noiseScale
-        data0[i] += noise
-        if channelCount >= 2, let data1 = ablPointer[1].mData?.assumingMemoryBound(to: Float.self) {
-            data1[i] += noise
-        }
-    }
-}
-
-// MARK: - Per-channel DSP pipeline
-
-private func processChannel(_ data: UnsafeMutablePointer<Float>, frameCount: Int, ctx: TapContext, isLeft: Bool) {
-    let n = vDSP_Length(frameCount)
-
-    // Helper to pick L/R delay state
-    func biquad(_ setup: OpaquePointer?, _ delaysL: inout [Float], _ delaysR: inout [Float]) {
-        guard let setup else { return }
-        if isLeft {
-            vDSP_biquad(setup, &delaysL, data, 1, data, 1, n)
-        } else {
-            vDSP_biquad(setup, &delaysR, data, 1, data, 1, n)
-        }
-    }
-
-    let kitchen = ctx.kitchenMode
-
-    // 1. High-pass
-    if kitchen {
-        biquad(ctx.kitchenHPSetup, &ctx.kitchenHPDelays, &ctx.kitchenHPDelaysR)
-    } else {
-        biquad(ctx.highPassSetup, &ctx.highPassDelays, &ctx.highPassDelaysR)
-    }
-
-    // 2. 2nd harmonic exciter — skip entirely in kitchen (distance kills harmonics)
-    if !kitchen {
-        ctx.tempBuffer.withUnsafeMutableBufferPointer { tmp in
-            vDSP_vsq(data, 1, tmp.baseAddress!, 1, n)
-            var amount = ctx.exciterAmount
-            vDSP_vsma(tmp.baseAddress!, 1, &amount, data, 1, data, 1, n)
-        }
-    }
-
-    // 3. Mid-range presence / doorway resonance
-    if kitchen {
-        biquad(ctx.kitchenDoorSetup, &ctx.kitchenDoorDelays, &ctx.kitchenDoorDelaysR)
-    } else {
-        biquad(ctx.midBoostSetup, &ctx.midBoostDelays, &ctx.midBoostDelaysR)
-    }
-
-    // 4. Tape pre-emphasis (skip in kitchen — irrelevant at this distance)
-    if !kitchen {
-        biquad(ctx.preEmphasisSetup, &ctx.preEmphDelays, &ctx.preEmphDelaysR)
-    }
-
-    // 5. Saturation stage 1 — very gentle in kitchen
-    let d1: Float = kitchen ? 0.8 : ctx.drive1
-    let b1: Float = kitchen ? 0.05 : ctx.bias1
-    asymmetricSaturate(data, n: n, drive: d1, bias: b1, dcOffset: tanhf(b1 * d1))
-
-    // 6. Interstage LP at 6 kHz
-    biquad(ctx.interstageSetup, &ctx.interstageDelays, &ctx.interstageDelaysR)
-
-    // 7. Saturation stage 2 — barely there in kitchen
-    let d2: Float = kitchen ? 0.9 : ctx.drive2
-    let b2: Float = kitchen ? 0.03 : ctx.bias2
-    asymmetricSaturate(data, n: n, drive: d2, bias: b2, dcOffset: tanhf(b2 * d2))
-
-    // 8. Tape de-emphasis (skip in kitchen)
-    if !kitchen {
-        biquad(ctx.deEmphasisSetup, &ctx.deEmphDelays, &ctx.deEmphDelaysR)
-    }
-
-    // 9. Compressor
-    applyCompressor(data, frameCount: frameCount, ctx: ctx, isLeft: isLeft)
-
-    // 10. Low-pass — wall absorption
-    if kitchen {
-        // Aggressive cascaded LP: walls kill everything above ~800 Hz
-        biquad(ctx.kitchenLP1Setup, &ctx.kitchenLP1Delays, &ctx.kitchenLP1DelaysR)
-        biquad(ctx.kitchenLP2Setup, &ctx.kitchenLP2Delays, &ctx.kitchenLP2DelaysR)
-    } else {
-        biquad(ctx.lowPassSetup, &ctx.lowPassDelays, &ctx.lowPassDelaysR)
-    }
-
-    // 11. Bass resonance / room color
-    if kitchen {
-        biquad(ctx.kitchenRoomSetup, &ctx.kitchenRoomDelays, &ctx.kitchenRoomDelaysR)
-    } else {
-        biquad(ctx.bassBoostSetup, &ctx.bassBoostDelays, &ctx.bassBoostDelaysR)
-    }
-
-    if kitchen {
-        // 12. Feedback delay — kitchen wall reflections.
-        // A ~15ms delay with 0.35 feedback creates a decaying series of reflections
-        // (15ms, 30ms, 45ms...) simulating the small kitchen's reverberant field.
-        // High wet mix (0.5) for that unmistakable "other room" washy quality.
-        let delay = ctx.kitchenDelaySamples
-        let bufLen = ctx.kitchenDelayBuf.count
-        let feedback: Float = 0.35
-        let wet: Float = 0.50
-        let dry: Float = 0.55
-        for i in 0..<frameCount {
-            let readIdx = (ctx.kitchenDelayIdx - delay + bufLen) % bufLen
-            let delayed = ctx.kitchenDelayBuf[readIdx]
-            // Feed back into the delay buffer for decaying reflections
-            ctx.kitchenDelayBuf[ctx.kitchenDelayIdx] = data[i] + delayed * feedback
-            ctx.kitchenDelayIdx = (ctx.kitchenDelayIdx + 1) % bufLen
-            data[i] = data[i] * dry + delayed * wet
-        }
-
-        // 13. Distance attenuation — far corner to far corner (~-14 dB)
-        var gain: Float = 0.20
-        vDSP_vsmul(data, 1, &gain, data, 1, n)
-    }
-}
-
-// MARK: - Asymmetric tube saturation
-
-private func asymmetricSaturate(_ data: UnsafeMutablePointer<Float>, n: vDSP_Length, drive: Float, bias: Float, dcOffset: Float) {
-    // Add bias
-    var b = bias
-    vDSP_vsadd(data, 1, &b, data, 1, n)
-
-    // Apply drive
-    var d = drive
-    vDSP_vsmul(data, 1, &d, data, 1, n)
-
-    // tanh saturation
-    var count = Int32(n)
-    vvtanhf(data, data, &count)
-
-    // Remove DC offset from bias
-    var negDC = -dcOffset
-    vDSP_vsadd(data, 1, &negDC, data, 1, n)
-}
-
-// MARK: - Soft-knee RMS compressor
-
-private func applyCompressor(_ data: UnsafeMutablePointer<Float>, frameCount: Int, ctx: TapContext, isLeft: Bool) {
-    let n = vDSP_Length(frameCount)
-
-    // Compute RMS of this block
-    var meansq: Float = 0
-    vDSP_measqv(data, 1, &meansq, n)
-    let rms = sqrtf(meansq)
-
-    // Smooth envelope
-    var envelope = isLeft ? ctx.compEnvelopeL : ctx.compEnvelopeR
-    let coeff = rms > envelope ? ctx.compAttackCoeff : ctx.compReleaseCoeff
-    envelope = coeff * envelope + (1 - coeff) * rms
-    if isLeft { ctx.compEnvelopeL = envelope } else { ctx.compEnvelopeR = envelope }
-
-    // Soft-knee gain calculation
-    let threshold = ctx.compThreshold
-    let knee = ctx.compKneeWidth
-    let ratio = ctx.compRatio
-
-    var gainReduction: Float = 1.0
-
-    if envelope > threshold + knee / 2 {
-        // Above knee — full compression
-        let overDB = 20 * log10f(envelope / threshold)
-        let compressedDB = overDB / ratio
-        gainReduction = powf(10, (compressedDB - overDB) / 20)
-    } else if envelope > threshold - knee / 2 {
-        // In the knee — gradual onset
-        let x = envelope - (threshold - knee / 2)
-        let kneeRatio = x / knee  // 0..1 through the knee
-        let effectiveRatio = 1.0 + (ratio - 1.0) * kneeRatio
-        let overDB = 20 * log10f(envelope / threshold)
-        let compressedDB = overDB / effectiveRatio
-        gainReduction = powf(10, (compressedDB - overDB) / 20)
-    }
-
-    if gainReduction < 1.0 {
-        vDSP_vsmul(data, 1, &gainReduction, data, 1, n)
-    }
-}
-
-// MARK: - MTAudioProcessingTap creation (handles SDK bridging differences)
-
-// C-level MTAudioProcessingTapCreate always takes a CFTypeRef* (void**) output.
-// The Swift bridging changed between SDK versions (Unmanaged vs direct), so we
-// call the C function directly to avoid type mismatches.
-@_silgen_name("MTAudioProcessingTapCreate")
-private func _MTAudioProcessingTapCreate(
-    _ allocator: CFAllocator?,
-    _ callbacks: UnsafePointer<MTAudioProcessingTapCallbacks>,
-    _ flags: MTAudioProcessingTapCreationFlags,
-    _ tapOut: UnsafeMutablePointer<Unmanaged<MTAudioProcessingTap>?>
-) -> OSStatus
-
-private func createProcessingTap(_ callbacks: inout MTAudioProcessingTapCallbacks) -> MTAudioProcessingTap? {
-    var tap: Unmanaged<MTAudioProcessingTap>?
-    let status = _MTAudioProcessingTapCreate(kCFAllocatorDefault, &callbacks, kMTAudioProcessingTapCreationFlag_PostEffects, &tap)
-    guard status == noErr else { return nil }
-    return tap?.takeRetainedValue()
-}
-
 // MARK: - RadioPlayer
+
+/// Thread-safe ring buffer of raw (unprocessed) PCM buffers.
+private final class RawBufferRing: @unchecked Sendable {
+    private let lock = NSLock()
+    private var ring: [AVAudioPCMBuffer] = []
+    private let maxCount = 8  // ~48s of audio at 6s segments
+
+    func push(_ buffer: AVAudioPCMBuffer) {
+        lock.lock()
+        ring.append(buffer)
+        if ring.count > maxCount { ring.removeFirst() }
+        lock.unlock()
+    }
+
+    /// Returns a deep copy of all buffered segments.
+    func snapshot() -> [AVAudioPCMBuffer] {
+        lock.lock()
+        let copy = ring.map { copyBuffer($0) }
+        lock.unlock()
+        return copy
+    }
+
+    /// Deep copy a PCM buffer so DSP can mutate it without affecting the ring.
+    private func copyBuffer(_ src: AVAudioPCMBuffer) -> AVAudioPCMBuffer {
+        let dst = AVAudioPCMBuffer(pcmFormat: src.format, frameCapacity: src.frameLength)!
+        dst.frameLength = src.frameLength
+        let bytes = Int(src.frameLength) * MemoryLayout<Float>.size
+        for ch in 0..<Int(src.format.channelCount) {
+            memcpy(dst.floatChannelData![ch], src.floatChannelData![ch], bytes)
+        }
+        return dst
+    }
+}
 
 @MainActor
 @Observable
 final class RadioPlayer {
-    nonisolated init() {}
+    nonisolated init() {
+        var cont: AsyncStream<Void>.Continuation!
+        bufferTriggerStream = AsyncStream { cont = $0 }
+        bufferTriggerCont = cont
+        bufferRing = RawBufferRing()
+    }
 
-    private var player: AVPlayer?
-    private var tapContext: TapContext?
-    private var playerObservation: NSKeyValueObservation?
+    private var engine: AVAudioEngine?
+    private var playerNode: AVAudioPlayerNode?
+    private var streamer: HLSStreamer?
+    private var downloadTask: Task<Void, Never>?
+    private var processTask: Task<Void, Never>?
+    private let bufferRing: RawBufferRing
+    private let bufferTriggerStream: AsyncStream<Void>
+    private let bufferTriggerCont: AsyncStream<Void>.Continuation
 
     private(set) var currentStation: Station?
     private(set) var isPlaying = false
     private(set) var isMuted = false
-    private(set) var kitchenMode = false
+    private(set) var audioMode: AudioMode = .lofi
+
+    private var silenceTimer: Timer?
+    private let dsp = DSPContext()
 
     func play(station: Station) async {
-        if currentStation == station && player != nil {
+        if currentStation == station && engine != nil {
             stop()
             return
         }
@@ -545,72 +479,142 @@ final class RadioPlayer {
         stop()
         currentStation = station
 
-        let asset = AVURLAsset(url: station.url)
-        let item = AVPlayerItem(asset: asset)
+        let hlsStreamer = HLSStreamer()
+        self.streamer = hlsStreamer
 
-        let ctx = TapContext()
-        ctx.kitchenMode = kitchenMode
-        self.tapContext = ctx
-        let ctxPointer = Unmanaged.passUnretained(ctx).toOpaque()
+        await hlsStreamer.start(station: station)
 
-        var callbacks = MTAudioProcessingTapCallbacks(
-            version: kMTAudioProcessingTapCallbacksVersion_0,
-            clientInfo: ctxPointer,
-            init: tapInit,
-            finalize: tapFinalize,
-            prepare: tapPrepare,
-            unprepare: tapUnprepare,
-            process: tapProcess
-        )
+        // Wait for first buffer to get format
+        var firstBuffer: AVAudioPCMBuffer?
+        for await buf in await hlsStreamer.buffers {
+            firstBuffer = buf
+            break
+        }
+        guard let firstBuffer else {
+            NSLog("🔴 RadioPlayer: no audio from HLS")
+            stop()
+            return
+        }
 
-        let resolvedTap: MTAudioProcessingTap? = createProcessingTap(&callbacks)
+        let format = firstBuffer.format
+        NSLog("🔊 RadioPlayer: starting engine with format \(format)")
+        dsp.configure(sampleRate: format.sampleRate)
+        dsp.audioMode = audioMode
 
-        if let tap = resolvedTap {
-            let audioMix = AVMutableAudioMix()
-            if let audioTrack = try? await asset.loadTracks(withMediaType: .audio).first {
-                let params = AVMutableAudioMixInputParameters(track: audioTrack)
-                params.audioTapProcessor = tap
-                audioMix.inputParameters = [params]
-                item.audioMix = audioMix
+        let audioEngine = AVAudioEngine()
+        let node = AVAudioPlayerNode()
+        audioEngine.attach(node)
+        audioEngine.connect(node, to: audioEngine.mainMixerNode, format: format)
+
+        do {
+            try audioEngine.start()
+        } catch {
+            NSLog("🔴 RadioPlayer: engine start failed: \(error)")
+            stop()
+            return
+        }
+
+        self.engine = audioEngine
+        self.playerNode = node
+
+        // Store first buffer in ring and process it
+        bufferRing.push(firstBuffer)
+        let processed = bufferRing.snapshot().last!
+        dsp.process(processed)
+        node.scheduleBuffer(processed, completionHandler: nil)
+        node.play()
+        isPlaying = true
+
+        // Download loop: fetch segments → raw ring
+        let ring = bufferRing
+        let trigger = bufferTriggerCont
+        downloadTask = Task.detached {
+            for await buffer in await hlsStreamer.buffers {
+                guard !Task.isCancelled else { break }
+                ring.push(buffer)
+                trigger.yield()
             }
         }
 
-        let avPlayer = AVPlayer(playerItem: item)
-        self.player = avPlayer
+        // Process loop: raw ring → DSP → engine queue
+        startProcessLoop()
+    }
 
-        playerObservation = avPlayer.observe(\.timeControlStatus) { [weak self] _, _ in
-            let captured = self
-            Task { @MainActor in
-                captured?.updateState()
+    /// Continuously processes new raw buffers and schedules them.
+    private func startProcessLoop() {
+        processTask?.cancel()
+        let dspRef = dsp
+        let ring = bufferRing
+        let nodeRef = playerNode!
+        var lastProcessedCount = 1  // we already processed the first one
+
+        processTask = Task.detached {
+            for await _ in self.bufferTriggerStream {
+                guard !Task.isCancelled else { break }
+                let all = ring.snapshot()
+                // Only process buffers we haven't seen yet
+                let newBuffers = Array(all.dropFirst(lastProcessedCount))
+                for buffer in newBuffers {
+                    dspRef.process(buffer)
+                    nodeRef.scheduleBuffer(buffer, completionHandler: nil)
+                }
+                lastProcessedCount = all.count
             }
         }
+    }
 
-        avPlayer.play()
-        updateState()
+    /// Flush engine queue and reprocess the last raw buffer with current DSP mode.
+    private func reflush() {
+        guard let node = playerNode else { return }
+        node.stop()
+
+        // Grab the most recent raw buffer, process with new mode, queue it
+        if let latest = bufferRing.snapshot().last {
+            dsp.process(latest)
+            node.scheduleBuffer(latest, completionHandler: nil)
+        }
+        node.play()
     }
 
     func stop() {
-        player?.pause()
-        player = nil
-        playerObservation = nil
-        tapContext = nil
+        downloadTask?.cancel()
+        downloadTask = nil
+        processTask?.cancel()
+        processTask = nil
+        playerNode?.stop()
+        engine?.stop()
+        engine = nil
+        playerNode = nil
+        if let s = streamer {
+            Task { await s.stop() }
+        }
+        streamer = nil
         currentStation = nil
-        updateState()
+        isPlaying = false
     }
 
     func toggleMute() {
-        guard let player else { return }
-        player.isMuted.toggle()
-        isMuted = player.isMuted
+        guard let engine else { return }
+        engine.mainMixerNode.outputVolume = engine.mainMixerNode.outputVolume > 0 ? 0 : 1
+        isMuted = engine.mainMixerNode.outputVolume == 0
     }
 
-    func toggleKitchenMode() {
-        kitchenMode.toggle()
-        tapContext?.kitchenMode = kitchenMode
-    }
+    func setAudioMode(_ mode: AudioMode) {
+        guard mode != audioMode else { return }
+        audioMode = mode
+        dsp.audioMode = mode
 
-    private func updateState() {
-        isPlaying = player?.timeControlStatus == .playing || player?.timeControlStatus == .waitingToPlayAtSpecifiedRate
-        isMuted = player?.isMuted ?? false
+        // Flush old processed buffers and immediately reprocess from raw ring
+        reflush()
+
+        // Brief silence gap as audible cue
+        engine?.mainMixerNode.outputVolume = 0
+        silenceTimer?.invalidate()
+        silenceTimer = Timer.scheduledTimer(withTimeInterval: 0.12, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, !self.isMuted else { return }
+                self.engine?.mainMixerNode.outputVolume = 1
+            }
+        }
     }
 }

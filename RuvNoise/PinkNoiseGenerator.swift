@@ -10,7 +10,7 @@ struct PinkNoiseGenerator {
     private var index: Int = 0
 
     /// Amplitude scaler — targets roughly -40 dB (0.01)
-    var amplitude: Float = 0.01
+    var amplitude: Float = 0.008
 
     init() {
         // Seed rows

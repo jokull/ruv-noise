@@ -4,21 +4,16 @@ import SwiftUI
 struct RuvNoiseApp: App {
     @State private var player = RadioPlayer()
     @State private var scheduler = NewsScheduler()
-    @State private var didConfigure = false
+    @State private var configured = false
 
     var body: some Scene {
-        // Configure scheduler at app launch, not when menu is first opened.
-        let _ = ensureConfigured()
         MenuBarExtra("RUV Noise", systemImage: player.isPlaying ? "radio.fill" : "radio") {
             MenuContent(player: player, scheduler: scheduler)
-        }
-    }
-
-    private func ensureConfigured() {
-        guard !didConfigure else { return }
-        didConfigure = true
-        Task { @MainActor in
-            scheduler.configure(player: player)
+                .task {
+                    guard !configured else { return }
+                    configured = true
+                    scheduler.configure(player: player)
+                }
         }
     }
 }
@@ -47,11 +42,13 @@ private struct MenuContent: View {
                 .foregroundStyle(.secondary)
         }
         Divider()
-        Toggle(isOn: Binding(
-            get: { player.kitchenMode },
-            set: { _ in player.toggleKitchenMode() }
-        )) {
-            Label("Kitchen Mode", systemImage: player.kitchenMode ? "frying.pan.fill" : "frying.pan")
+        ForEach(AudioMode.allCases, id: \.self) { mode in
+            Toggle(isOn: Binding(
+                get: { player.audioMode == mode },
+                set: { _ in player.setAudioMode(mode) }
+            )) {
+                Label(mode.rawValue, systemImage: mode.systemImage)
+            }
         }
         Button(player.isMuted ? "Unmute" : "Mute") {
             player.toggleMute()
