@@ -1,27 +1,34 @@
-# RÚV Noise
+<p align="center">
+  <img src="screenshot.png" alt="RÚV Noise" width="600">
+</p>
 
-A tiny macOS menubar app that streams Icelandic national radio with a lo-fi FM twist.
+<h1 align="center">RÚV Noise</h1>
+<p align="center">Icelandic public radio through a warm tube amp in your menubar</p>
 
-## What it does
+---
 
-Click the RÚV logo in your menubar → pick RÁS 1 or RÁS 2 → listen to Icelandic public radio that sounds like it's coming through a cheap FM receiver on your nightstand. Great for background noise.
+A tiny macOS menubar app that streams RÁS 1 and RÁS 2 with a lo-fi analog processing chain. Great for background noise while you work.
 
-## Menubar
+## The Sound
 
-- **Idle:** RÚV logo
-- **Playing:** RÚV logo with a small speaker badge
-- **Dropdown:** RÁS 1 · RÁS 2 · Mute
+The audio runs through a real-time DSP pipeline designed to sound like a warm vintage tube radio:
 
-## The FM effect
+- **Band shaping** — HP 200 Hz / LP 5.5 kHz with mid-range presence boost at 2.2 kHz
+- **Tube saturation** — Two cascaded asymmetric triode stages with even harmonic exciter
+- **Tape coloring** — Pre/de-emphasis around the saturation for natural HF compression
+- **Soft compression** — RMS-based soft-knee compressor (slow attack, tube-like squish)
+- **Analog noise** — Pink noise floor + sparse vinyl crackle
+- **Mono collapse** — Stereo → mono, like a single-speaker radio
 
-The audio is processed in real-time to simulate a tinny FM radio:
+## Build
 
-- Band-pass filter narrowing to ~300 Hz – 4 kHz (telephone/AM-ish range)
-- Gentle saturation for that analog warmth
-- Subtle stereo-to-mono collapse
-- Light noise floor (barely perceptible pink noise)
+```
+open RuvNoise.xcodeproj
+# ⌘R to run, or:
+xcodebuild -scheme RuvNoise -configuration Release
+```
 
-Not too much, not too little — you should forget it's fake after 30 seconds.
+Requires macOS 14+ and Xcode 15+.
 
 ## Streams
 
@@ -30,21 +37,9 @@ Not too much, not too little — you should forget it's fake after 30 seconds.
 | RÁS 1  | `https://ruv-radio-live.akamaized.net/streymi/ras1/ras1.m3u8` |
 | RÁS 2  | `https://ruv-radio-live.akamaized.net/streymi/ras2/ras2.m3u8` |
 
-Fallback API: `https://geo.spilari.ruv.is/channel/{ras1,ras2}` returns JSON with current stream URL.
-
 ## Tech
 
-- Swift + SwiftUI menubar app (no dock icon)
+- Swift + SwiftUI `MenuBarExtra` (no dock icon)
 - AVFoundation for HLS streaming
-- AVAudioEngine for real-time audio processing
+- `MTAudioProcessingTap` + vDSP/Accelerate for real-time DSP
 - Native macOS — no Electron, no dependencies
-
-## Build
-
-```
-open RuvNoise.xcodeproj
-# or
-xcodebuild -scheme RuvNoise -configuration Release
-```
-
-Requires macOS 14+ and Xcode 15+.
