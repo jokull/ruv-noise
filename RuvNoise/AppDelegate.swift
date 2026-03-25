@@ -7,8 +7,18 @@ struct RuvNoiseApp: App {
     @State private var didConfigure = false
 
     var body: some Scene {
+        // Configure scheduler at app launch, not when menu is first opened.
+        let _ = ensureConfigured()
         MenuBarExtra("RUV Noise", systemImage: player.isPlaying ? "radio.fill" : "radio") {
-            MenuContent(player: player, scheduler: scheduler, didConfigure: $didConfigure)
+            MenuContent(player: player, scheduler: scheduler)
+        }
+    }
+
+    private func ensureConfigured() {
+        guard !didConfigure else { return }
+        didConfigure = true
+        Task { @MainActor in
+            scheduler.configure(player: player)
         }
     }
 }
@@ -16,7 +26,6 @@ struct RuvNoiseApp: App {
 private struct MenuContent: View {
     let player: RadioPlayer
     let scheduler: NewsScheduler
-    @Binding var didConfigure: Bool
 
     var body: some View {
         ForEach(Station.allCases, id: \.self) { station in
@@ -52,11 +61,6 @@ private struct MenuContent: View {
         Button("Quit") {
             player.stop()
             NSApplication.shared.terminate(nil)
-        }
-        .task {
-            guard !didConfigure else { return }
-            didConfigure = true
-            scheduler.configure(player: player)
         }
     }
 
