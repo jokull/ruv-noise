@@ -32,16 +32,27 @@ private final class TapContext {
     var deEmphasisSetup: OpaquePointer?     // High shelf -3 dB at 3 kHz
     var interstageSetup: OpaquePointer?     // LP 6 kHz between saturation stages
 
-    // Kitchen mode filter setups (narrower band, harsher)
-    var kitchenHPSetup: OpaquePointer?      // HP 400 Hz
-    var kitchenLPSetup: OpaquePointer?      // LP 3 kHz
-    var kitchenMidSetup: OpaquePointer?     // Peaking 1.5 kHz +6 dB (tinny)
+    // Kitchen mode: "radio in the other room" simulation
+    var kitchenHPSetup: OpaquePointer?      // HP 250 Hz (small speaker at distance)
+    var kitchenLP1Setup: OpaquePointer?     // LP 1.5 kHz (wall absorption stage 1)
+    var kitchenLP2Setup: OpaquePointer?     // LP 1.2 kHz (wall absorption stage 2, cascaded)
+    var kitchenDoorSetup: OpaquePointer?    // Peaking 800 Hz +5 dB Q=2.5 (doorway resonance)
+    var kitchenRoomSetup: OpaquePointer?    // Peaking 250 Hz +2 dB Q=1.0 (room color)
     var kitchenHPDelays = [Float](repeating: 0, count: 4)
     var kitchenHPDelaysR = [Float](repeating: 0, count: 4)
-    var kitchenLPDelays = [Float](repeating: 0, count: 4)
-    var kitchenLPDelaysR = [Float](repeating: 0, count: 4)
-    var kitchenMidDelays = [Float](repeating: 0, count: 4)
-    var kitchenMidDelaysR = [Float](repeating: 0, count: 4)
+    var kitchenLP1Delays = [Float](repeating: 0, count: 4)
+    var kitchenLP1DelaysR = [Float](repeating: 0, count: 4)
+    var kitchenLP2Delays = [Float](repeating: 0, count: 4)
+    var kitchenLP2DelaysR = [Float](repeating: 0, count: 4)
+    var kitchenDoorDelays = [Float](repeating: 0, count: 4)
+    var kitchenDoorDelaysR = [Float](repeating: 0, count: 4)
+    var kitchenRoomDelays = [Float](repeating: 0, count: 4)
+    var kitchenRoomDelaysR = [Float](repeating: 0, count: 4)
+
+    // Short delay line for kitchen wall reflection (~20ms)
+    var kitchenDelayBuf = [Float](repeating: 0, count: 1024)
+    var kitchenDelayIdx: Int = 0
+    var kitchenDelaySamples: Int = 882      // ~20ms at 44100
 
     // Per-channel biquad delay state (L and R)
     var highPassDelays = [Float](repeating: 0, count: 4)
@@ -87,7 +98,8 @@ private final class TapContext {
     deinit {
         for setup in [highPassSetup, lowPassSetup, midBoostSetup, bassBoostSetup,
                       preEmphasisSetup, deEmphasisSetup, interstageSetup,
-                      kitchenHPSetup, kitchenLPSetup, kitchenMidSetup] {
+                      kitchenHPSetup, kitchenLP1Setup, kitchenLP2Setup,
+                      kitchenDoorSetup, kitchenRoomSetup] {
             if let s = setup { vDSP_biquad_DestroySetup(s) }
         }
     }
@@ -138,16 +150,29 @@ private final class TapContext {
         interstageDelays = [Float](repeating: 0, count: 4)
         interstageDelaysR = [Float](repeating: 0, count: 4)
 
-        // Kitchen mode: narrower band, tinnier, more aggressive
-        destroyAndCreate(&kitchenHPSetup, Self.highPassCoefficients(cutoff: 400, sampleRate: sampleRate))
+        // Kitchen mode: "radio in the other room" — muffled through walls/doorway
+        destroyAndCreate(&kitchenHPSetup, Self.highPassCoefficients(cutoff: 250, sampleRate: sampleRate))
         kitchenHPDelays = [Float](repeating: 0, count: 4)
         kitchenHPDelaysR = [Float](repeating: 0, count: 4)
-        destroyAndCreate(&kitchenLPSetup, Self.lowPassCoefficients(cutoff: 3000, sampleRate: sampleRate))
-        kitchenLPDelays = [Float](repeating: 0, count: 4)
-        kitchenLPDelaysR = [Float](repeating: 0, count: 4)
-        destroyAndCreate(&kitchenMidSetup, Self.peakingEQCoefficients(centerFreq: 1500, gainDB: 6, Q: 1.2, sampleRate: sampleRate))
-        kitchenMidDelays = [Float](repeating: 0, count: 4)
-        kitchenMidDelaysR = [Float](repeating: 0, count: 4)
+        // Cascaded LP for steep wall-absorption rolloff (~-24 dB/oct above 1.2 kHz)
+        destroyAndCreate(&kitchenLP1Setup, Self.lowPassCoefficients(cutoff: 1500, sampleRate: sampleRate))
+        kitchenLP1Delays = [Float](repeating: 0, count: 4)
+        kitchenLP1DelaysR = [Float](repeating: 0, count: 4)
+        destroyAndCreate(&kitchenLP2Setup, Self.lowPassCoefficients(cutoff: 1200, sampleRate: sampleRate))
+        kitchenLP2Delays = [Float](repeating: 0, count: 4)
+        kitchenLP2DelaysR = [Float](repeating: 0, count: 4)
+        // Doorway resonance — the nasal "through an opening" quality
+        destroyAndCreate(&kitchenDoorSetup, Self.peakingEQCoefficients(centerFreq: 800, gainDB: 5, Q: 2.5, sampleRate: sampleRate))
+        kitchenDoorDelays = [Float](repeating: 0, count: 4)
+        kitchenDoorDelaysR = [Float](repeating: 0, count: 4)
+        // Subtle room color from kitchen standing waves
+        destroyAndCreate(&kitchenRoomSetup, Self.peakingEQCoefficients(centerFreq: 250, gainDB: 2, Q: 1.0, sampleRate: sampleRate))
+        kitchenRoomDelays = [Float](repeating: 0, count: 4)
+        kitchenRoomDelaysR = [Float](repeating: 0, count: 4)
+        // Delay line for first wall reflection (~20ms)
+        kitchenDelaySamples = Int(sampleRate * 0.020)
+        kitchenDelayBuf = [Float](repeating: 0, count: max(kitchenDelaySamples + 1, 1024))
+        kitchenDelayIdx = 0
     }
 
     private func destroyAndCreate(_ setup: inout OpaquePointer?, _ coeffs: [Double]) {
@@ -290,8 +315,10 @@ private func tapProcess(
         memcpy(data1, data0, frameCount * MemoryLayout<Float>.size)
     }
 
-    // Add pink noise + vinyl crackle (kitchen mode = 4x noise, more crackle)
-    let noiseScale: Float = ctx.kitchenMode ? 4.0 : 1.0
+    // Add pink noise + vinyl crackle.
+    // Kitchen mode uses 1.5x noise (less than before, but the -10 dB signal
+    // attenuation makes it relatively much more prominent — like room ambience).
+    let noiseScale: Float = ctx.kitchenMode ? 1.5 : 1.0
     for i in 0..<frameCount {
         let noise = (ctx.noiseGen.next() + ctx.crackleGen.next()) * noiseScale
         data0[i] += noise
@@ -318,7 +345,7 @@ private func processChannel(_ data: UnsafeMutablePointer<Float>, frameCount: Int
 
     let kitchen = ctx.kitchenMode
 
-    // 1. High-pass — 200 Hz normal, 400 Hz kitchen (cut more bass = tinnier)
+    // 1. High-pass — 200 Hz normal, 250 Hz kitchen (small speaker at distance)
     if kitchen {
         biquad(ctx.kitchenHPSetup, &ctx.kitchenHPDelays, &ctx.kitchenHPDelaysR)
     } else {
@@ -326,16 +353,18 @@ private func processChannel(_ data: UnsafeMutablePointer<Float>, frameCount: Int
     }
 
     // 2. 2nd harmonic exciter: y = x + amount * x²
-    let exciterAmt: Float = kitchen ? 0.35 : ctx.exciterAmount
+    // Kitchen uses less — distance smooths harmonics
+    let exciterAmt: Float = kitchen ? 0.08 : ctx.exciterAmount
     ctx.tempBuffer.withUnsafeMutableBufferPointer { tmp in
         vDSP_vsq(data, 1, tmp.baseAddress!, 1, n)
         var amount = exciterAmt
         vDSP_vsma(tmp.baseAddress!, 1, &amount, data, 1, data, 1, n)
     }
 
-    // 3. Mid-range presence boost
+    // 3. Mid-range presence / doorway resonance
     if kitchen {
-        biquad(ctx.kitchenMidSetup, &ctx.kitchenMidDelays, &ctx.kitchenMidDelaysR)
+        // Doorway resonance at 800 Hz — the nasal "through an opening" character
+        biquad(ctx.kitchenDoorSetup, &ctx.kitchenDoorDelays, &ctx.kitchenDoorDelaysR)
     } else {
         biquad(ctx.midBoostSetup, &ctx.midBoostDelays, &ctx.midBoostDelaysR)
     }
@@ -343,17 +372,17 @@ private func processChannel(_ data: UnsafeMutablePointer<Float>, frameCount: Int
     // 4. Tape pre-emphasis (high shelf +3 dB at 3 kHz)
     biquad(ctx.preEmphasisSetup, &ctx.preEmphDelays, &ctx.preEmphDelaysR)
 
-    // 5. Saturation stage 1 — kitchen cranks the drive and bias
-    let d1: Float = kitchen ? 2.2 : ctx.drive1
-    let b1: Float = kitchen ? 0.3 : ctx.bias1
+    // 5. Saturation stage 1 — kitchen is gentle (distance softens everything)
+    let d1: Float = kitchen ? 1.0 : ctx.drive1
+    let b1: Float = kitchen ? 0.08 : ctx.bias1
     asymmetricSaturate(data, n: n, drive: d1, bias: b1, dcOffset: tanhf(b1 * d1))
 
     // 6. Interstage LP at 6 kHz (coupling capacitor sim)
     biquad(ctx.interstageSetup, &ctx.interstageDelays, &ctx.interstageDelaysR)
 
     // 7. Saturation stage 2
-    let d2: Float = kitchen ? 2.5 : ctx.drive2
-    let b2: Float = kitchen ? 0.25 : ctx.bias2
+    let d2: Float = kitchen ? 1.1 : ctx.drive2
+    let b2: Float = kitchen ? 0.05 : ctx.bias2
     asymmetricSaturate(data, n: n, drive: d2, bias: b2, dcOffset: tanhf(b2 * d2))
 
     // 8. Tape de-emphasis (high shelf -3 dB at 3 kHz)
@@ -362,16 +391,41 @@ private func processChannel(_ data: UnsafeMutablePointer<Float>, frameCount: Int
     // 9. Soft-knee RMS compressor
     applyCompressor(data, frameCount: frameCount, ctx: ctx, isLeft: isLeft)
 
-    // 10. Low-pass — 5.5 kHz normal, 3 kHz kitchen (very muffled)
+    // 10. Low-pass — wall absorption
     if kitchen {
-        biquad(ctx.kitchenLPSetup, &ctx.kitchenLPDelays, &ctx.kitchenLPDelaysR)
+        // Cascaded LP for steep rolloff simulating sound through walls
+        biquad(ctx.kitchenLP1Setup, &ctx.kitchenLP1Delays, &ctx.kitchenLP1DelaysR)
+        biquad(ctx.kitchenLP2Setup, &ctx.kitchenLP2Delays, &ctx.kitchenLP2DelaysR)
     } else {
         biquad(ctx.lowPassSetup, &ctx.lowPassDelays, &ctx.lowPassDelaysR)
     }
 
-    // 11. Bass resonance bump (skip in kitchen — no bass in a tinny speaker)
-    if !kitchen {
+    // 11. Bass resonance / room color
+    if kitchen {
+        // Subtle room-mode warmth from the kitchen's standing waves
+        biquad(ctx.kitchenRoomSetup, &ctx.kitchenRoomDelays, &ctx.kitchenRoomDelaysR)
+    } else {
         biquad(ctx.bassBoostSetup, &ctx.bassBoostDelays, &ctx.bassBoostDelaysR)
+    }
+
+    if kitchen {
+        // 12. Mix in a short delay (~20ms) for the kitchen's first wall reflection.
+        // This gives the "small enclosed room" quality. Only process left channel
+        // since mono is collapsed later anyway.
+        let delaySamples = ctx.kitchenDelaySamples
+        let wetMix: Float = 0.3
+        let dryMix: Float = 1.0 - wetMix * 0.5  // slight dry reduction
+        for i in 0..<frameCount {
+            let readIdx = (ctx.kitchenDelayIdx - delaySamples + ctx.kitchenDelayBuf.count) % ctx.kitchenDelayBuf.count
+            let delayed = ctx.kitchenDelayBuf[readIdx]
+            ctx.kitchenDelayBuf[ctx.kitchenDelayIdx] = data[i]
+            ctx.kitchenDelayIdx = (ctx.kitchenDelayIdx + 1) % ctx.kitchenDelayBuf.count
+            data[i] = data[i] * dryMix + delayed * wetMix
+        }
+
+        // 13. Distance attenuation — you're in the other room (~-10 dB)
+        var gain: Float = 0.32
+        vDSP_vsmul(data, 1, &gain, data, 1, n)
     }
 }
 
@@ -463,6 +517,8 @@ private func createProcessingTap(_ callbacks: inout MTAudioProcessingTapCallback
 @MainActor
 @Observable
 final class RadioPlayer {
+    nonisolated init() {}
+
     private var player: AVPlayer?
     private var tapContext: TapContext?
     private var playerObservation: NSKeyValueObservation?
@@ -514,8 +570,9 @@ final class RadioPlayer {
         self.player = avPlayer
 
         playerObservation = avPlayer.observe(\.timeControlStatus) { [weak self] _, _ in
+            let captured = self
             Task { @MainActor in
-                self?.updateState()
+                captured?.updateState()
             }
         }
 
