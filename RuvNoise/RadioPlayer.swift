@@ -447,9 +447,6 @@ private final class RawBufferRing: @unchecked Sendable {
 @Observable
 final class RadioPlayer {
     nonisolated init() {
-        var cont: AsyncStream<Void>.Continuation!
-        bufferTriggerStream = AsyncStream { cont = $0 }
-        bufferTriggerCont = cont
         bufferRing = RawBufferRing()
     }
 
@@ -457,10 +454,7 @@ final class RadioPlayer {
     private var playerNode: AVAudioPlayerNode?
     private var streamer: HLSStreamer?
     private var downloadTask: Task<Void, Never>?
-    private var processTask: Task<Void, Never>?
     private let bufferRing: RawBufferRing
-    private let bufferTriggerStream: AsyncStream<Void>
-    private let bufferTriggerCont: AsyncStream<Void>.Continuation
 
     private(set) var currentStation: Station?
     private(set) var isPlaying = false
@@ -484,81 +478,50 @@ final class RadioPlayer {
 
         await hlsStreamer.start(station: station)
 
-        // Wait for first buffer to get format
-        var firstBuffer: AVAudioPCMBuffer?
-        for await buf in await hlsStreamer.buffers {
-            firstBuffer = buf
-            break
-        }
-        guard let firstBuffer else {
-            NSLog("🔴 RadioPlayer: no audio from HLS")
-            stop()
-            return
-        }
-
-        let format = firstBuffer.format
-        NSLog("🔊 RadioPlayer: starting engine with format \(format)")
-        dsp.configure(sampleRate: format.sampleRate)
-        dsp.audioMode = audioMode
-
-        let audioEngine = AVAudioEngine()
-        let node = AVAudioPlayerNode()
-        audioEngine.attach(node)
-        audioEngine.connect(node, to: audioEngine.mainMixerNode, format: format)
-
-        do {
-            try audioEngine.start()
-        } catch {
-            NSLog("🔴 RadioPlayer: engine start failed: \(error)")
-            stop()
-            return
-        }
-
-        self.engine = audioEngine
-        self.playerNode = node
-
-        // Store first buffer in ring and process it
-        bufferRing.push(firstBuffer)
-        let processed = bufferRing.snapshot().last!
-        dsp.process(processed)
-        node.scheduleBuffer(processed, completionHandler: nil)
-        node.play()
-        isPlaying = true
-
-        // Download loop: fetch segments → raw ring
-        let ring = bufferRing
-        let trigger = bufferTriggerCont
-        downloadTask = Task.detached {
-            for await buffer in await hlsStreamer.buffers {
-                guard !Task.isCancelled else { break }
-                ring.push(buffer)
-                trigger.yield()
-            }
-        }
-
-        // Process loop: raw ring → DSP → engine queue
-        startProcessLoop()
-    }
-
-    /// Continuously processes new raw buffers and schedules them.
-    private func startProcessLoop() {
-        processTask?.cancel()
+        // Single consumer: download, store in ring, process, schedule
         let dspRef = dsp
         let ring = bufferRing
-        let nodeRef = playerNode!
-        let stream = bufferTriggerStream
+        let modeRef = audioMode
 
-        processTask = Task.detached {
-            var lastProcessedCount = 1  // we already processed the first one
-            for await _ in stream {
-                guard !Task.isCancelled else { break }
-                let all = ring.snapshot()
-                let newBuffers = Array(all.dropFirst(lastProcessedCount))
-                for buffer in newBuffers {
-                    dspRef.process(buffer)
-                    nodeRef.scheduleBuffer(buffer, completionHandler: nil)
+        downloadTask = Task { [weak self] in
+            var engineStarted = false
+
+            for await buffer in await hlsStreamer.buffers {
+                guard let self, !Task.isCancelled else { break }
+
+                // Store raw copy in ring (for mode-switch reflush)
+                ring.push(buffer)
+
+                if !engineStarted {
+                    let format = buffer.format
+                    NSLog("🔊 RadioPlayer: starting engine with format \(format)")
+                    dspRef.configure(sampleRate: format.sampleRate)
+                    dspRef.audioMode = modeRef
+
+                    let audioEngine = AVAudioEngine()
+                    let node = AVAudioPlayerNode()
+                    audioEngine.attach(node)
+                    audioEngine.connect(node, to: audioEngine.mainMixerNode, format: format)
+
+                    do {
+                        try audioEngine.start()
+                    } catch {
+                        NSLog("🔴 RadioPlayer: engine start failed: \(error)")
+                        self.stop()
+                        return
+                    }
+
+                    self.engine = audioEngine
+                    self.playerNode = node
+                    node.play()
+                    self.isPlaying = true
+                    engineStarted = true
                 }
-                lastProcessedCount = all.count
+
+                // Process a copy (ring keeps the raw original)
+                let copy = ring.snapshot().last!
+                dspRef.process(copy)
+                self.playerNode?.scheduleBuffer(copy, completionHandler: nil)
             }
         }
     }
@@ -579,8 +542,6 @@ final class RadioPlayer {
     func stop() {
         downloadTask?.cancel()
         downloadTask = nil
-        processTask?.cancel()
-        processTask = nil
         playerNode?.stop()
         engine?.stop()
         engine = nil
