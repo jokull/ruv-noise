@@ -257,21 +257,21 @@ final class NewsScheduler {
         guard Date() < event.startTime else { return }
 
         guard isEnabled, !isScreenAsleep, !isDNDActive(),
-              player?.currentStation == nil else { return }
+              player?.state == .idle else { return }
 
         // Re-measure latency right before connecting for maximum precision.
         // This accounts for CDN routing changes and network conditions.
         await measureHLSLatency()
 
         autoPlayActive = true
-        await player?.play(station: .ras1)
+        await player?.forcePlay(station: .ras1)
         updateNextNews()
     }
 
     private func stopAutoPlay() {
         guard autoPlayActive else { return }
         autoPlayActive = false
-        if player?.currentStation == .ras1 {
+        if player?.state.activeStation == .ras1 {
             player?.stop()
         }
         updateNextNews()

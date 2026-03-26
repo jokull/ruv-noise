@@ -7,13 +7,21 @@ struct RuvNoiseApp: App {
     @State private var configured = false
 
     var body: some Scene {
-        MenuBarExtra("RUV Noise", systemImage: player.isPlaying ? "radio.fill" : "radio") {
+        MenuBarExtra("RUV Noise", systemImage: menuBarIcon) {
             MenuContent(player: player, scheduler: scheduler)
                 .task {
                     guard !configured else { return }
                     configured = true
                     scheduler.configure(player: player)
                 }
+        }
+    }
+
+    private var menuBarIcon: String {
+        switch player.state {
+        case .idle: "radio"
+        case .loading: "antenna.radiowaves.left.and.right"
+        case .playing: "radio.fill"
         }
     }
 }
@@ -25,10 +33,10 @@ private struct MenuContent: View {
     var body: some View {
         ForEach(Station.allCases, id: \.self) { station in
             Toggle(station.rawValue, isOn: Binding(
-                get: { player.currentStation == station },
+                get: { player.state.isStation(station) },
                 set: { _ in
                     scheduler.userDidInteract()
-                    Task { await player.play(station: station) }
+                    Task { await player.selectStation(station) }
                 }
             ))
         }
@@ -50,10 +58,6 @@ private struct MenuContent: View {
                 Label(mode.rawValue, systemImage: mode.systemImage)
             }
         }
-        Button(player.isMuted ? "Unmute" : "Mute") {
-            player.toggleMute()
-        }
-        .disabled(!player.isPlaying)
         Divider()
         Button("Quit") {
             player.stop()
