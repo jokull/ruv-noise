@@ -7,21 +7,13 @@ struct RuvNoiseApp: App {
     @State private var configured = false
 
     var body: some Scene {
-        MenuBarExtra("RUV Noise", systemImage: menuBarIcon) {
+        MenuBarExtra("RUV Noise", systemImage: player.state.isActive ? "radio.fill" : "radio") {
             MenuContent(player: player, scheduler: scheduler)
                 .task {
                     guard !configured else { return }
                     configured = true
                     scheduler.configure(player: player)
                 }
-        }
-    }
-
-    private var menuBarIcon: String {
-        switch player.state {
-        case .idle: "radio"
-        case .loading: "antenna.radiowaves.left.and.right"
-        case .playing: "radio.fill"
         }
     }
 }
