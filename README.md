@@ -3,36 +3,37 @@
 </p>
 
 <h1 align="center">RÚV Noise</h1>
-<p align="center">Icelandic public radio through a warm tube amp in your menubar</p>
+<p align="center">Icelandic public radio through a simulated FM receiver in your menubar</p>
 
 ---
 
-A tiny macOS menubar app that streams RÁS 1 and RÁS 2 with a lo-fi analog processing chain. Great for background noise while you work.
+A tiny macOS menubar app that streams RÁS 1 and RÁS 2 with real-time audio processing. Great for background noise while you work.
 
 ## The Sound
 
 Three modes — switch from the menubar:
 
-### Lo-Fi (default)
+### FM (default)
 
-Warm vintage tube radio. The audio runs through a real-time DSP pipeline:
+Broadcast FM radio simulation based on how FM reception actually works:
 
-- **Band shaping** — HP 200 Hz / LP 4.5 kHz with +6 dB mid-range presence at 2 kHz
-- **Tube saturation** — Two cascaded asymmetric triode stages with even harmonic exciter
-- **Tape coloring** — Pre/de-emphasis around the saturation for natural HF compression
-- **Soft compression** — RMS-based soft-knee compressor (slow attack, tube-like squish)
-- **FM detuning** — Slow volume drift, pilot tone flutter, faint mains hum — like being 0.5% off the wavelength
-- **Analog noise** — Pink noise floor + sparse vinyl crackle
-- **Mono collapse** — Stereo → mono, like a single-speaker radio
+- **50μs de-emphasis** — the European FM warmth curve (corner at 3.2 kHz, −6 dB/octave)
+- **15 kHz brick-wall LP** — FM broadcast bandwidth limit, kills digital air
+- **Broadcast compression** — wideband Optimod-style density
+- **Soft clipper** — broadcast limiter, subtle odd harmonics
+- **FM-shaped noise** — differentiated white noise through de-emphasis (triangular spectrum hiss)
+- **Multipath reflections** — two modulated delay taps (0.5 ms, 1.5 ms) with slow flutter
+- **Stereo width reduction** — real FM has ~35 dB separation, not infinite
+- **19 kHz pilot tone** — faint leakage at −50 dB, like a cheap receiver
 
-### Kitchen Mode
+### Kitchen
 
-Radio in the other room. Two-stage spatial simulation:
+Radio in the other room — grandma's kitchen radio heard from the living room:
 
-1. **Eldhús** — Small kitchen reverb (8ms, high feedback), standing wave resonance at 600 Hz
-2. **Doorway** — Low-pass at 1.2 kHz as sound passes through the door
-3. **Stofa** — Larger living room reverb (25ms, moderate feedback), room color at 250 Hz
-4. **Distance** — -6 dB attenuation, noise becomes relatively prominent
+1. **Eldhús** — Mild tube saturation (cheap amp) + small kitchen reverb (6ms, gentle feedback)
+2. **Doorway** — Low-pass at 2.5 kHz as sound passes through the door
+3. **Stofa** — Larger living room reverb (20ms, subtle feedback), room color at 300 Hz
+4. **Distance** — −4 dB attenuation, quiet room-tone noise
 
 ### Clean
 
@@ -42,6 +43,7 @@ Bypass all processing. Pure HLS stream for A/B comparison.
 
 - Auto-tune for RÁS 1 news broadcasts (fetches schedule from RÚV GraphQL API)
 - Measures actual HLS live latency for precise auto-play timing
+- Tap active station to stop — no mute, no complexity
 
 ## Build
 
@@ -64,5 +66,6 @@ Requires macOS 14+ and Xcode 15+.
 
 - Swift + SwiftUI `MenuBarExtra` (no dock icon)
 - Manual HLS segment fetching + `AVAudioEngine` for real-time DSP
-- vDSP/Accelerate biquad filters, asymmetric saturation, RMS compression
+- 50μs IIR de-emphasis, 4th-order Butterworth LP, RMS compression, multipath delay lines
+- `PlaybackState` enum state machine — single source of truth for UI
 - Native macOS — no Electron, no dependencies
