@@ -32,6 +32,11 @@ private struct MenuContent: View {
                 }
             ))
         }
+        if player.state.isActive, let show = player.nowPlayingShow {
+            Text("\(show.title) • \(formatTime(show.startTime))")
+                .foregroundStyle(.secondary)
+                .font(.caption)
+        }
         Divider()
         Toggle("Spila fréttir sjálfkrafa", isOn: Binding(
             get: { scheduler.isEnabled },
