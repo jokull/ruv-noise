@@ -28,6 +28,14 @@ enum AudioMode: String, CaseIterable {
     }
 }
 
+// MARK: - Show Info
+
+struct ShowInfo: Equatable {
+    let title: String
+    let startTime: Date
+    let endTime: Date
+}
+
 // MARK: - DSP Context
 
 final class DSPContext {
@@ -501,13 +509,19 @@ final class RadioPlayer {
     private var playerNode: AVAudioPlayerNode?
     private var streamer: HLSStreamer?
     private var downloadTask: Task<Void, Never>?
+    private var showFetchTask: Task<Void, Never>?
     private let bufferRing: RawBufferRing
     private var silenceTimer: Timer?
     private let dsp = DSPContext()
+    
+    private var showSchedule: [ShowInfo] = []
+    private var streamStartTime: Date?
+    private var activeStation: Station?
 
     // -- Observable state (single source of truth) --
     private(set) var state: PlaybackState = .idle
     private(set) var audioMode: AudioMode = .fm
+    private(set) var nowPlayingShow: ShowInfo?
 
     // MARK: - Public API
 
@@ -532,6 +546,8 @@ final class RadioPlayer {
     func stop() {
         downloadTask?.cancel()
         downloadTask = nil
+        showFetchTask?.cancel()
+        showFetchTask = nil
         playerNode?.stop()
         engine?.stop()
         engine = nil
@@ -539,6 +555,10 @@ final class RadioPlayer {
         if let s = streamer { Task { await s.stop() } }
         streamer = nil
         state = .idle
+        nowPlayingShow = nil
+        streamStartTime = nil
+        activeStation = nil
+        showSchedule = []
     }
 
     func setAudioMode(_ mode: AudioMode) {
@@ -557,6 +577,116 @@ final class RadioPlayer {
         }
     }
 
+    // MARK: - Show Info
+
+    /// Fetch the day's show schedule from the GraphQL API.
+    private func fetchShowSchedule(for station: Station) async {
+        NSLog("📺 Fetching show schedule for \(station.rawValue)")
+        let channelId = station == .ras1 ? "ras1" : "ras2"
+        let tz = TimeZone(identifier: "Atlantic/Reykjavik")!
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        df.timeZone = tz
+
+        let today = df.string(from: Date())
+        let tomorrow = df.string(from: Date().addingTimeInterval(86400))
+
+        async let todaySchedule = fetchShowScheduleForDate(today, channel: channelId)
+        async let tomorrowSchedule = fetchShowScheduleForDate(tomorrow, channel: channelId)
+
+        let today_ = (try? await todaySchedule) ?? []
+        let tomorrow_ = (try? await tomorrowSchedule) ?? []
+        showSchedule = (today_ + tomorrow_).sorted { $0.startTime < $1.startTime }
+        NSLog("✅ Fetched \(showSchedule.count) shows")
+        if showSchedule.isEmpty {
+            NSLog("⚠️ No shows found!")
+        } else {
+            NSLog("   First show: \(showSchedule.first?.title ?? "N/A") at \(showSchedule.first?.startTime ?? Date())")
+            NSLog("   Last show: \(showSchedule.last?.title ?? "N/A") at \(showSchedule.last?.endTime ?? Date())")
+        }
+
+        updateCurrentShow()
+    }
+
+    private func fetchShowScheduleForDate(_ date: String, channel: String) async throws -> [ShowInfo] {
+        NSLog("   Fetching shows for \(channel) on \(date)...")
+        let vars = "{\"channel\":\"\(channel)\",\"date\":\"\(date)\"}"
+        let ext = "{\"persistedQuery\":{\"version\":1,\"sha256Hash\":\"16670c47c2a2e68558ce1984fa60f4486542b693d360de3a80620c32a4f5791d\"}}"
+
+        var comps = URLComponents(string: "https://spilari.nyr.ruv.is/gql/")!
+        comps.queryItems = [
+            URLQueryItem(name: "operationName", value: "getSchedule"),
+            URLQueryItem(name: "variables", value: vars),
+            URLQueryItem(name: "extensions", value: ext),
+        ]
+
+        var req = URLRequest(url: comps.url!)
+        req.setValue("application/json", forHTTPHeaderField: "content-type")
+        req.setValue("https://www.ruv.is/", forHTTPHeaderField: "referer")
+        req.setValue("https://www.ruv.is", forHTTPHeaderField: "origin")
+
+        let (data, _) = try await URLSession.shared.data(for: req)
+
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let d = json["data"] as? [String: Any],
+              let sched = d["Schedule"] as? [String: Any],
+              let events = sched["events"] as? [[String: Any]] else {
+            NSLog("⚠️ Failed to parse JSON response")
+            return []
+        }
+        NSLog("   Got \(events.count) events from API")
+
+        let tz = TimeZone(identifier: "Atlantic/Reykjavik")!
+        let timeFmt = DateFormatter()
+        timeFmt.dateFormat = "yyyy-MM-dd HH:mm"
+        timeFmt.timeZone = tz
+
+        return events.compactMap { ev -> ShowInfo? in
+            guard let title = ev["title"] as? String,
+                  let start = ev["start_time_friendly"] as? String,
+                  let end = ev["end_time_friendly"] as? String,
+                  let startDate = timeFmt.date(from: "\(date) \(start)"),
+                  var endDate = timeFmt.date(from: "\(date) \(end)") else { return nil }
+
+            if endDate <= startDate { endDate.addTimeInterval(86400) }
+            return ShowInfo(title: title, startTime: startDate, endTime: endDate)
+        }
+    }
+
+    /// Update the current show based on elapsed stream time and HLS latency.
+    private func updateCurrentShow() {
+        guard streamStartTime != nil, activeStation != nil else {
+            nowPlayingShow = nil
+            NSLog("⚠️ updateCurrentShow: No stream start time or station")
+            return
+        }
+
+        // Account for HLS latency (approximately 24 seconds)
+        let hlsLatency: TimeInterval = 24
+        let listenerTime = Date().addingTimeInterval(-hlsLatency)
+        NSLog("🕐 Current listener time (with HLS latency): \(listenerTime)")
+        NSLog("   Checking \(showSchedule.count) shows...")
+
+        // First, look for a show currently playing
+        if let show = showSchedule.first(where: { $0.startTime <= listenerTime && listenerTime < $0.endTime }) {
+            if nowPlayingShow != show {
+                nowPlayingShow = show
+                NSLog("📍 Now playing: \(show.title) (\(show.startTime) - \(show.endTime))")
+            }
+        } else {
+            // If no current show, show the next upcoming show
+            if let nextShow = showSchedule.first(where: { $0.startTime > listenerTime }) {
+                if nowPlayingShow != nextShow {
+                    nowPlayingShow = nextShow
+                    NSLog("📍 Up next: \(nextShow.title) (starting \(nextShow.startTime))")
+                }
+            } else {
+                NSLog("❌ No show found for this time or upcoming")
+                nowPlayingShow = nil
+            }
+        }
+    }
+
     // MARK: - Private
 
     private func startStream(for station: Station) async {
@@ -567,6 +697,23 @@ final class RadioPlayer {
         let dspRef = dsp
         let ring = bufferRing
         let modeRef = audioMode
+
+        // Track station and stream start time for show info
+        activeStation = station
+        streamStartTime = Date()
+
+        // Fetch show schedule for the station
+        showFetchTask?.cancel()
+        showFetchTask = Task {
+            await fetchShowSchedule(for: station)
+            // Periodically update current show every 30 seconds
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 30 * 1_000_000_000)
+                if !Task.isCancelled {
+                    updateCurrentShow()
+                }
+            }
+        }
 
         downloadTask = Task { [weak self] in
             var engineStarted = false
