@@ -32,6 +32,7 @@ jobs:
             -configuration Release \
             -derivedDataPath build \
             CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM=RDC8539AWM \
             CODE_SIGN_IDENTITY="Developer ID Application" \
             ENABLE_HARDENED_RUNTIME=YES
 
