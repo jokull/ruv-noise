@@ -12,3 +12,6 @@ xcuserdata/
 *.p12
 *.p8
 AuthKey_*.p8
+
+# Local
+.claude/
