@@ -1,0 +1,14 @@
+# Xcode
+build/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+
+# macOS
+.DS_Store
+
+# Credentials (never commit)
+*.p12
+*.p8
+AuthKey_*.p8
