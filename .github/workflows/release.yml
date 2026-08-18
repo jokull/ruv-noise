@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: macos-15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Import signing certificate
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+        run: |
+          echo "$MACOS_CERTIFICATE" | base64 --decode > certificate.p12
+          security create-keychain -p "$MACOS_KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$MACOS_KEYCHAIN_PASSWORD" build.keychain
+          security import certificate.p12 -k build.keychain -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$MACOS_KEYCHAIN_PASSWORD" build.keychain
+
+      - name: Build
+        run: |
+          xcodebuild \
+            -project RuvNoise.xcodeproj \
+            -scheme RuvNoise \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM=RDC8539AWM \
+            CODE_SIGN_IDENTITY="Developer ID Application" \
+            ENABLE_HARDENED_RUNTIME=YES \
+            CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
+            OTHER_CODE_SIGN_FLAGS="--timestamp"
+
+      - name: Create DMG
+        run: |
+          APP_PATH="build/Build/Products/Release/RuvNoise.app"
+          STAGING="build/dmg"
+          rm -rf "$STAGING"
+          mkdir -p "$STAGING"
+          cp -R "$APP_PATH" "$STAGING/"
+          ln -s /Applications "$STAGING/Applications"
+          hdiutil create \
+            -volname "RuvNoise" \
+            -srcfolder "$STAGING" \
+            -ov -format UDZO \
+            "RuvNoise.dmg"
+
+      - name: Notarize
+        env:
+          APPSTORE_CONNECT_API_KEY_ID: ${{ secrets.APPSTORE_CONNECT_API_KEY_ID }}
+          APPSTORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APPSTORE_CONNECT_API_KEY_ISSUER_ID }}
+          APPSTORE_CONNECT_API_KEY: ${{ secrets.APPSTORE_CONNECT_API_KEY }}
+        run: |
+          echo "$APPSTORE_CONNECT_API_KEY" | base64 --decode > AuthKey.p8
+          xcrun notarytool submit RuvNoise.dmg \
+            --key AuthKey.p8 \
+            --key-id "$APPSTORE_CONNECT_API_KEY_ID" \
+            --issuer "$APPSTORE_CONNECT_API_KEY_ISSUER_ID" \
+            --wait
+
+      - name: Staple
+        run: |
+          # The ticket can lag a few seconds behind notarytool --wait; retry.
+          for i in 1 2 3 4 5 6; do
+            if xcrun stapler staple RuvNoise.dmg; then
+              exit 0
+            fi
+            echo "stapler attempt $i failed — retrying in 10s"
+            sleep 10
+          done
+          exit 1
+
+      - name: Upload release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: RuvNoise.dmg
+          generate_release_notes: true

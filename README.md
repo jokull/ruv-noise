@@ -45,7 +45,17 @@ Bypass all processing. Pure HLS stream for A/B comparison.
 - Measures actual HLS live latency for precise auto-play timing
 - Tap active station to stop — no mute, no complexity
 
-## Build
+## Build & Run
+
+Run without opening Xcode:
+
+```
+./run.sh
+```
+
+Builds with `xcodebuild` (ad-hoc signed) and launches the menubar app.
+
+Or open in Xcode:
 
 ```
 open RuvNoise.xcodeproj
@@ -54,6 +64,34 @@ xcodebuild -scheme RuvNoise -configuration Release
 ```
 
 Requires macOS 14+ and Xcode 15+.
+
+## Release
+
+Releases are built, notarized, and attached to GitHub Releases automatically when you push a version tag.
+
+### One-time setup
+
+1. Create a **Developer ID Application** certificate — Xcode → Settings → Accounts → Manage Certificates → **+** → *Developer ID Application*. Export it as a `.p12` with a password.
+2. Create an **App Store Connect API key** — [App Store Connect](https://appstoreconnect.apple.com) → Users and Access → Integrations → API keys. Note the *Key ID* and *Issuer ID*.
+3. Add these repository secrets (Settings → Secrets and variables → Actions):
+
+| Secret | Value |
+|---|---|
+| `MACOS_CERTIFICATE` | base64 of the `.p12` (`base64 < cert.p12 \| pbcopy`) |
+| `MACOS_CERTIFICATE_PASSWORD` | the `.p12` password |
+| `MACOS_KEYCHAIN_PASSWORD` | any password — used for a temporary keychain |
+| `APPSTORE_CONNECT_API_KEY_ID` | the API key's *Key ID* (e.g. `H8RC4UN83P`) |
+| `APPSTORE_CONNECT_API_KEY_ISSUER_ID` | the API key's *Issuer ID* |
+| `APPSTORE_CONNECT_API_KEY` | base64 of the `.p8` (`base64 < AuthKey_XXX.p8 \| pbcopy`) |
+
+### Cut a release
+
+```
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The workflow signs with your Developer ID, notarizes with Apple, and attaches a `RuvNoise.dmg` (drag-to-Applications) to the release.
 
 ## Streams
 
