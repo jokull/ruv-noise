@@ -1,0 +1,18 @@
+<?xml version="1.0" standalone="yes"?><!-- sparkle-sign-warning:
+IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires re-signing this file with generate_appcast or sign_update! The signed signature will be embedded at the end of this file.
+--><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>RuvNoise</title>
+        <item>
+            <title>2.2.1</title>
+            <pubDate>Tue, 18 Aug 2026 21:47:27 +0000</pubDate>
+            <sparkle:version>1</sparkle:version>
+            <sparkle:shortVersionString>2.2.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/jokull/ruv-noise/releases/download/v2.3.0/RuvNoise.dmg" length="3863756" type="application/octet-stream" sparkle:edSignature="W4/6EznoDlq1gsfQ1HUaHu6n8gLGK7qs6cfByQ2t0eTAa9iZ/LpMoqrhhYNeYiZY/uXgxd2GZHcN4vOJswpYDA=="></enclosure>
+        </item>
+    </channel>
+</rss><!-- sparkle-signatures:
+edSignature: bjh8vUlsHTDBk/5vgWGMMIPvI6vySleVfYL18ENcSdBHr3wa6QppqA0vUZ3G0qvSWXFZ3CAHAF8Wz+qElLhbDA==
+length: 1034
+-->
