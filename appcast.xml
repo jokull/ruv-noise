@@ -1,6 +1,8 @@
-<?xml version="1.0" standalone="yes"?><!-- sparkle-sign-warning:
+<?xml version="1.0" standalone="yes"?>
+<!-- sparkle-sign-warning:
 IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires re-signing this file with generate_appcast or sign_update! The signed signature will be embedded at the end of this file.
---><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+-->
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
     <channel>
         <title>RuvNoise</title>
         <item>
@@ -9,10 +11,11 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
             <sparkle:version>1</sparkle:version>
             <sparkle:shortVersionString>2.3.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/jokull/ruv-noise/releases/download/v2.3.0/RuvNoise.dmg" length="3864464" type="application/octet-stream" sparkle:edSignature="fVcb5nfxm7FQfKNgVmOZ76Iv+XpiseNxvJLP1AXk1Bgql/RsWHdQqcgSH+h35/47uKUlNWYeAZ3XHafWxkfhAA=="></enclosure>
+            <enclosure url="https://github.com/jokull/ruv-noise/releases/download/v2.3.0/RuvNoise.dmg" length="3864464" type="application/octet-stream" sparkle:edSignature="fVcb5nfxm7FQfKNgVmOZ76Iv+XpiseNxvJLP1AXk1Bgql/RsWHdQqcgSH+h35/47uKUlNWYeAZ3XHafWxkfhAA=="/>
         </item>
     </channel>
-</rss><!-- sparkle-signatures:
-edSignature: b8TWIeCDlJCXxlbyWK4lNuGUpPT0EK10F/QYtChaVN9bhR+N8xUc2prVbUpjJ6YUWJifui8Tatjb8zWJOZ31Ag==
-length: 1034
+</rss>
+<!-- sparkle-signatures:
+edSignature: /oxFUjkSrrF/9fk79i4U9TGu+69TPkKbG2mf6yAydiGWoLlVKhF1tpz+ZFdPE3jIIDRanuAGJQmeSjbW04tuCg==
+length: 1026
 -->
