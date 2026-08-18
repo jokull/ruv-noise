@@ -11,11 +11,11 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
             <sparkle:version>1</sparkle:version>
             <sparkle:shortVersionString>2.3.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/jokull/ruv-noise/releases/download/v2.3.0/RuvNoise.dmg" length="3864464" type="application/octet-stream" sparkle:edSignature="fVcb5nfxm7FQfKNgVmOZ76Iv+XpiseNxvJLP1AXk1Bgql/RsWHdQqcgSH+h35/47uKUlNWYeAZ3XHafWxkfhAA=="/>
+            <enclosure url="https://github.com/jokull/ruv-noise/releases/download/v2.3.0/RuvNoise.dmg" length="3918138" type="application/octet-stream" sparkle:edSignature="REKa3PPy3Jy7T7iP99h4hwUSjslki7+319kPHaDCVRGuALo5I4ehfxe3gA9SsuE1LBW7KBU1S0+IObtjBG0hDg=="/>
         </item>
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: /oxFUjkSrrF/9fk79i4U9TGu+69TPkKbG2mf6yAydiGWoLlVKhF1tpz+ZFdPE3jIIDRanuAGJQmeSjbW04tuCg==
+edSignature: +j3VcNlLcDzgsrhd8yH+cHLNSaVf6wWi65HwZkii5w30uES/rj2S6iMjO03dVjjFHqI7Slu1BewN8cgPuVwyAQ==
 length: 1026
 -->
