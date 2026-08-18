@@ -610,20 +610,33 @@ final class RadioPlayer {
 
     private func fetchShowScheduleForDate(_ date: String, channel: String) async throws -> [ShowInfo] {
         NSLog("   Fetching shows for \(channel) on \(date)...")
-        let vars = "{\"channel\":\"\(channel)\",\"date\":\"\(date)\"}"
-        let ext = "{\"persistedQuery\":{\"version\":1,\"sha256Hash\":\"16670c47c2a2e68558ce1984fa60f4486542b693d360de3a80620c32a4f5791d\"}}"
 
-        var comps = URLComponents(string: "https://spilari.nyr.ruv.is/gql/")!
-        comps.queryItems = [
-            URLQueryItem(name: "operationName", value: "getSchedule"),
-            URLQueryItem(name: "variables", value: vars),
-            URLQueryItem(name: "extensions", value: ext),
-        ]
+        // The persisted-query hash used previously is no longer registered on the
+        // server (PersistedQueryNotFound), so we POST the full query — the same one
+        // RÚV's own Spilari frontend uses.
+        let query = """
+        query getScheduleForDirect($channel: Channels!, $date: String!) {
+          Schedule(channel: $channel, date: $date) {
+            events {
+              id
+              title
+              start_time
+              end_time
+            }
+          }
+        }
+        """
 
-        var req = URLRequest(url: comps.url!)
+        var req = URLRequest(url: URL(string: "https://spilari.nyr.ruv.is/gql/")!)
+        req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "content-type")
         req.setValue("https://www.ruv.is/", forHTTPHeaderField: "referer")
         req.setValue("https://www.ruv.is", forHTTPHeaderField: "origin")
+        req.httpBody = try JSONSerialization.data(withJSONObject: [
+            "operationName": "getScheduleForDirect",
+            "variables": ["channel": channel, "date": date],
+            "query": query,
+        ])
 
         let (data, _) = try await URLSession.shared.data(for: req)
 
@@ -638,17 +651,17 @@ final class RadioPlayer {
 
         let tz = TimeZone(identifier: "Atlantic/Reykjavik")!
         let timeFmt = DateFormatter()
-        timeFmt.dateFormat = "yyyy-MM-dd HH:mm"
+        timeFmt.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
         timeFmt.timeZone = tz
+        timeFmt.locale = Locale(identifier: "en_US_POSIX")
 
         return events.compactMap { ev -> ShowInfo? in
             guard let title = ev["title"] as? String,
-                  let start = ev["start_time_friendly"] as? String,
-                  let end = ev["end_time_friendly"] as? String,
-                  let startDate = timeFmt.date(from: "\(date) \(start)"),
-                  var endDate = timeFmt.date(from: "\(date) \(end)") else { return nil }
+                  let start = ev["start_time"] as? String,
+                  let end = ev["end_time"] as? String,
+                  let startDate = timeFmt.date(from: start),
+                  let endDate = timeFmt.date(from: end) else { return nil }
 
-            if endDate <= startDate { endDate.addTimeInterval(86400) }
             return ShowInfo(title: title, startTime: startDate, endTime: endDate)
         }
     }
