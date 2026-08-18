@@ -19,7 +19,7 @@
         <key>CFBundlePackageType</key>
         <string>APPL</string>
         <key>CFBundleShortVersionString</key>
-        <string>2.2.1</string>
+        <string>2.3.0</string>
         <key>CFBundleVersion</key>
         <string>1</string>
         <key>LSMinimumSystemVersion</key>
@@ -34,7 +34,7 @@
             <true />
         </dict>
         <key>SUFeedURL</key>
-        <string>https://raw.githubusercontent.com/jokull/ruv-noise/gh-pages/appcast.xml</string>
+        <string>https://jokull.github.io/ruv-noise/appcast.xml</string>
         <key>SUPublicEDKey</key>
         <string>yN0kROcQ/QHeNFvNOfqS3HVNSxh7NI8ZFibBY1uaStE=</string>
         <key>SURequireSignedFeed</key>

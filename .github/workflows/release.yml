@@ -84,3 +84,38 @@ jobs:
         with:
           files: RuvNoise.dmg
           generate_release_notes: true
+
+      - name: Generate and publish Sparkle appcast
+        env:
+          SPARKLE_ED25519_KEY: ${{ secrets.SPARKLE_ED25519_KEY }}
+          SPARKLE_VERSION: 2.9.6
+        run: |
+          set -euo pipefail
+
+          # Download the Sparkle tools (generate_appcast needs the private EdDSA key)
+          curl -sL -o sparkle.tar.xz \
+            "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz"
+          tar xf sparkle.tar.xz
+          SPARKLE_BIN="Sparkle-${SPARKLE_VERSION}/bin"
+
+          # Stage the new DMG (plus the previous appcast so generate_appcast can update it)
+          mkdir -p appcast-work
+          cp RuvNoise.dmg appcast-work/
+          curl -sfL "https://raw.githubusercontent.com/jokull/ruv-noise/gh-pages/appcast.xml" \
+            -o appcast-work/appcast.xml || true
+
+          # Generate + sign the appcast, pointing enclosures at this release's assets
+          echo "$SPARKLE_ED25519_KEY" | "$SPARKLE_BIN/generate_appcast" \
+            --ed-key-file - \
+            --download-url-prefix "https://github.com/jokull/ruv-noise/releases/download/${GITHUB_REF_NAME}/" \
+            appcast-work
+
+          # Publish appcast.xml to the gh-pages branch
+          git fetch origin gh-pages
+          git worktree add --detach gh-pages-wt origin/gh-pages
+          cp appcast-work/appcast.xml gh-pages-wt/appcast.xml
+          git -C gh-pages-wt config user.name "github-actions[bot]"
+          git -C gh-pages-wt config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C gh-pages-wt add appcast.xml
+          git -C gh-pages-wt commit -m "Update Sparkle appcast for ${GITHUB_REF_NAME}"
+          git -C gh-pages-wt push origin HEAD:gh-pages
