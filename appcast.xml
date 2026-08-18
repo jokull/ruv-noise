@@ -9,13 +9,13 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
             <title>2.3.0</title>
             <pubDate>Tue, 18 Aug 2026 21:49:27 +0000</pubDate>
             <sparkle:version>1</sparkle:version>
-            <sparkle:shortVersionString>2.3.0</sparkle:shortVersionString>
+            <sparkle:shortVersionString>2.3.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/jokull/ruv-noise/releases/download/v2.3.0/RuvNoise.dmg" length="3918138" type="application/octet-stream" sparkle:edSignature="REKa3PPy3Jy7T7iP99h4hwUSjslki7+319kPHaDCVRGuALo5I4ehfxe3gA9SsuE1LBW7KBU1S0+IObtjBG0hDg=="/>
+            <enclosure url="https://github.com/jokull/ruv-noise/releases/download/v2.3.1/RuvNoise.dmg" length="3917989" type="application/octet-stream" sparkle:edSignature="osQ+7YHel8FdVsQ89xuCx+u0zAiKcwz/bLsLhsZzXlazwzj1S0nRaIQmzKqIZ5ZFdNDXusjEAeQIaPtZu88DDw=="/>
         </item>
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: +j3VcNlLcDzgsrhd8yH+cHLNSaVf6wWi65HwZkii5w30uES/rj2S6iMjO03dVjjFHqI7Slu1BewN8cgPuVwyAQ==
+edSignature: 6cY3VQ0V8PvX0h6SPKwu8VnfKi3Ja5ULCnlf8yhNnj+Jbyu95Zn+WZzdMTpha+OpRc+O3M/QS1vZ+MsEBXvrAg==
 length: 1026
 -->
