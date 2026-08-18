@@ -1,4 +1,5 @@
 import SwiftUI
+import Sparkle
 
 @main
 struct RuvNoiseApp: App {
@@ -8,7 +9,7 @@ struct RuvNoiseApp: App {
 
     var body: some Scene {
         MenuBarExtra("RUV Noise", systemImage: player.state.isActive ? "radio.fill" : "radio") {
-            MenuContent(player: player, scheduler: scheduler)
+            MenuContent(player: player, scheduler: scheduler, updater: Updater.shared)
                 .task {
                     guard !configured else { return }
                     configured = true
@@ -18,9 +19,25 @@ struct RuvNoiseApp: App {
     }
 }
 
+/// Thin wrapper around Sparkle's updater controller so the menu can trigger
+/// update checks without owning the controller's lifecycle.
+final class Updater {
+    static let shared = Updater()
+    private let controller = SPUStandardUpdaterController(
+        startingUpdater: true,
+        updaterDelegate: nil,
+        userDriverDelegate: nil
+    )
+
+    func checkForUpdates() {
+        controller.checkForUpdates(nil)
+    }
+}
+
 private struct MenuContent: View {
     let player: RadioPlayer
     let scheduler: NewsScheduler
+    let updater: Updater
 
     var body: some View {
         ForEach(Station.allCases, id: \.self) { station in
@@ -54,6 +71,10 @@ private struct MenuContent: View {
             )) {
                 Label(mode.rawValue, systemImage: mode.systemImage)
             }
+        }
+        Divider()
+        Button("Check for Updates…") {
+            updater.checkForUpdates()
         }
         Divider()
         Button("Quit") {

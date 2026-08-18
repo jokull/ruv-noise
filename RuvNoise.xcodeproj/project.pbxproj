@@ -13,6 +13,7 @@
 		A10004 /* NewsScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20007 /* NewsScheduler.swift */; };
 		A10005 /* HLSStreamer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20008 /* HLSStreamer.swift */; };
 		A10006 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20009 /* Assets.xcassets */; };
+		A10007 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = A30002 /* Sparkle */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -32,6 +33,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A10007 /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -96,6 +98,9 @@
 			dependencies = (
 			);
 			name = RuvNoise;
+			packageProductDependencies = (
+				A30002 /* Sparkle */,
+			);
 			productName = RuvNoise;
 			productReference = A20006 /* RuvNoise.app */;
 			productType = "com.apple.product-type.application";
@@ -119,6 +124,9 @@
 				Base,
 			);
 			mainGroup = A40001 /* root */;
+			packageReferences = (
+				A30003 /* XCRemoteSwiftPackageReference "Sparkle" */,
+			);
 			productRefGroup = A40003 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -260,6 +268,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A30003 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.9.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A30002 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A30003 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+/* End XCSwiftPackageProductDependency section */
 
 	};
 	rootObject = A80001 /* Project object */;
