@@ -40,6 +40,25 @@ jobs:
             CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
             OTHER_CODE_SIGN_FLAGS="--timestamp"
 
+      - name: Re-sign Sparkle nested executables
+        # Sparkle.framework ships its nested helpers (Updater.app, XPC services,
+        # Autoupdate) adhoc-signed. Apple's notarization rejects adhoc-signed
+        # nested code, so re-sign them deepest-first with the Developer ID,
+        # then the framework and the app so the seals cover the new signatures.
+        run: |
+          set -euo pipefail
+          APP="build/Build/Products/Release/RuvNoise.app"
+          FW="$APP/Contents/Frameworks/Sparkle.framework/Versions/B"
+          IDENTITY="Developer ID Application"
+
+          codesign --force --options runtime --timestamp --sign "$IDENTITY" "$FW/Updater.app"
+          codesign --force --options runtime --timestamp --sign "$IDENTITY" "$FW/XPCServices/Downloader.xpc"
+          codesign --force --options runtime --timestamp --sign "$IDENTITY" "$FW/XPCServices/Installer.xpc"
+          codesign --force --options runtime --timestamp --sign "$IDENTITY" "$FW/Autoupdate"
+          codesign --force --options runtime --timestamp --sign "$IDENTITY" "$FW"
+          codesign --force --options runtime --timestamp --sign "$IDENTITY" "$APP"
+          codesign --verify --deep --strict "$APP"
+
       - name: Create DMG
         run: |
           APP_PATH="build/Build/Products/Release/RuvNoise.app"
