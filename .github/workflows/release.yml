@@ -13,6 +13,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validate version is newer than published appcast
+        # Refuses to release a version that is not strictly newer than what is
+        # already in the Sparkle feed — catches duplicate/recycled tags before
+        # the expensive build+notarize pipeline runs.
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          curl -sfL "https://raw.githubusercontent.com/jokull/ruv-noise/gh-pages/appcast.xml" \
+            -o appcast-current.xml || { echo "no existing appcast — first release, OK"; exit 0; }
+          python3 - "$VERSION" <<'PY'
+          import re, sys
+          def parse(v):
+              return [int(p) for p in re.findall(r'\d+', v)] or [0]
+          def cmp(a, b):
+              for x, y in zip(a, b):
+                  if x != y: return 1 if x > y else -1
+              return (len(a) > len(b)) - (len(a) < len(b))
+          new = parse(sys.argv[1])
+          xml = open('appcast-current.xml', encoding='utf-8').read()
+          versions = re.findall(
+              r'<sparkle:shortVersionString>([^<]+)</sparkle:shortVersionString>', xml)
+          if not versions:
+              print("appcast has no versioned entries — OK")
+              sys.exit(0)
+          latest = max(versions, key=parse)
+          print(f"tagged version: {sys.argv[1]}, latest published: {latest}")
+          if cmp(new, parse(latest)) <= 0:
+              print(f"ERROR: {sys.argv[1]} is not newer than already-published {latest} — refusing to release")
+              sys.exit(1)
+          PY
+
       - name: Import signing certificate
         env:
           MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
@@ -130,6 +161,20 @@ jobs:
             --ed-key-file - \
             --download-url-prefix "https://github.com/jokull/ruv-noise/releases/download/${GITHUB_REF_NAME}/" \
             appcast-work
+
+          # Guard: the new version must actually appear in the generated feed,
+          # otherwise publishing a stale appcast would silently break updates.
+          python3 - "$GITHUB_REF_NAME" appcast-work/appcast.xml <<'PY'
+          import re, sys
+          ver = sys.argv[1].lstrip("v")
+          xml = open(sys.argv[2], encoding='utf-8').read()
+          versions = re.findall(
+              r'<sparkle:shortVersionString>([^<]+)</sparkle:shortVersionString>', xml)
+          if ver not in versions:
+              print(f"ERROR: generated appcast does not contain {ver} (has {versions}) — aborting publish")
+              sys.exit(1)
+          print(f"appcast contains {ver} — OK")
+          PY
 
           # Publish appcast.xml to the gh-pages branch
           git fetch origin gh-pages

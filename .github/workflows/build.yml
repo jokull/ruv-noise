@@ -15,6 +15,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validate version setup
+        # MARKETING_VERSION must be identical in both build configs, and both
+        # CFBundleShortVersionString and CFBundleVersion must derive from it
+        # (Sparkle compares CFBundleVersion first — drift silently kills
+        # auto-updates).
+        run: |
+          set -euo pipefail
+          UNIQUE=$(grep -oE 'MARKETING_VERSION = [^;]+' \
+            RuvNoise.xcodeproj/project.pbxproj | sort -u | wc -l | tr -d ' ')
+          [ "$UNIQUE" = "1" ] || { echo "ERROR: MARKETING_VERSION differs between build configs"; exit 1; }
+          grep -q '\$(MARKETING_VERSION)' RuvNoise/Info.plist \
+            || { echo "ERROR: Info.plist must use \$(MARKETING_VERSION)"; exit 1; }
+          grep -q 'CFBundleVersion' RuvNoise/Info.plist \
+            || { echo "ERROR: Info.plist missing CFBundleVersion"; exit 1; }
+          echo "version setup OK"
+
       - name: Build
         run: xcodebuild -project RuvNoise.xcodeproj -scheme RuvNoise -configuration Release -derivedDataPath build CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=YES CODE_SIGNING_ALLOWED=YES
 
