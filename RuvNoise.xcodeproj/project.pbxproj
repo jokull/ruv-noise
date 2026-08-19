@@ -14,6 +14,7 @@
 		A10005 /* HLSStreamer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20008 /* HLSStreamer.swift */; };
 		A10006 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20009 /* Assets.xcassets */; };
 		A10007 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = A30002 /* Sparkle */; };
+		A10008 /* LiveStreamer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000A /* LiveStreamer.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -26,6 +27,7 @@
 		A20007 /* NewsScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewsScheduler.swift; sourceTree = "<group>"; };
 		A20008 /* HLSStreamer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HLSStreamer.swift; sourceTree = "<group>"; };
 		A20009 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A2000A /* LiveStreamer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveStreamer.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -67,6 +69,7 @@
 				A20003 /* PinkNoiseGenerator.swift */,
 				A20007 /* NewsScheduler.swift */,
 				A20008 /* HLSStreamer.swift */,
+				A2000A /* LiveStreamer.swift */,
 				A20009 /* Assets.xcassets */,
 				A20004 /* Info.plist */,
 				A20005 /* RuvNoise.entitlements */,
@@ -146,6 +149,7 @@
 				A10003 /* PinkNoiseGenerator.swift in Sources */,
 				A10004 /* NewsScheduler.swift in Sources */,
 				A10005 /* HLSStreamer.swift in Sources */,
+				A10008 /* LiveStreamer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -216,7 +220,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.3.1;
+				MARKETING_VERSION = 2.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = is.solberg.RuvNoise;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -238,7 +242,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2.3.1;
+				MARKETING_VERSION = 2.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = is.solberg.RuvNoise;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

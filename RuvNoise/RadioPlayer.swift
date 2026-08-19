@@ -2,14 +2,42 @@ import AVFoundation
 import Accelerate
 import CoreMedia
 
-enum Station: String, CaseIterable {
+enum Station: String, CaseIterable, Identifiable {
     case ras1 = "RÁS 1"
     case ras2 = "RÁS 2"
+    case rondo = "Rondó"
+    case bylgjan = "Bylgjan"
+    case fm957 = "FM957"
+    case x977 = "X977"
+    case gullBylgjan = "Gull Bylgjan"
+    case lettBylgjan = "Létt Bylgjan"
+    case saga = "Útvarp Saga"
+    case k100 = "K100"
+    case retro = "Retro"
+
+    var id: String { rawValue }
+
+    /// RÚV stations stream HLS (playlist + segments); the rest are continuous
+    /// HTTP streams (ICEcast/SHOUTcast: AAC or MP3).
+    static let ruvStations: [Station] = [.ras1, .ras2, .rondo]
+    static let liveStations: [Station] = [.bylgjan, .fm957, .x977, .gullBylgjan, .lettBylgjan, .saga, .k100, .retro]
+
+    var isHLS: Bool { Self.ruvStations.contains(self) }
+    var isRUV: Bool { isHLS }
 
     var url: URL {
         switch self {
         case .ras1: URL(string: "https://ruv-radio-live.akamaized.net/streymi/ras1/ras1.m3u8")!
         case .ras2: URL(string: "https://ruv-radio-live.akamaized.net/streymi/ras2/ras2.m3u8")!
+        case .rondo: URL(string: "https://ruv-radio-live.akamaized.net/streymi/rondo/rondo.m3u8")!
+        case .bylgjan: URL(string: "http://icecast.365net.is:8000/orbbylgjan.aac")!
+        case .fm957: URL(string: "http://icecast.365net.is:8000/orbFm957.aac")!
+        case .x977: URL(string: "http://icecast.365net.is:8000/orbXid.aac")!
+        case .gullBylgjan: URL(string: "http://icecast.365net.is:8000/orbGullBylgjan.aac")!
+        case .lettBylgjan: URL(string: "http://icecast.365net.is:8000/orbLettBylgjan.aac")!
+        case .saga: URL(string: "https://stream.utvarpsaga.is/Hljodver")!
+        case .k100: URL(string: "https://ice-11.spilarinn.is/kaninnmobile")!
+        case .retro: URL(string: "https://ice-11.spilarinn.is/retromobile")!
         }
     }
 }
@@ -498,6 +526,20 @@ extension PlaybackState {
 
 // MARK: - RadioPlayer
 
+/// Common interface for the two stream sources: HLS (playlist + segments) and
+/// continuous HTTP audio (ICEcast/SHOUTcast). Both yield decoded PCM buffers.
+protocol RadioStreamer {
+    var buffers: AsyncStream<AVAudioPCMBuffer> { get }
+    func start(station: Station) async
+    func stop() async
+}
+
+extension LiveStreamer: RadioStreamer {
+    func start(station: Station) async {
+        await start(url: station.url)
+    }
+}
+
 @MainActor
 @Observable
 final class RadioPlayer {
@@ -507,7 +549,7 @@ final class RadioPlayer {
 
     private var engine: AVAudioEngine?
     private var playerNode: AVAudioPlayerNode?
-    private var streamer: HLSStreamer?
+    private var streamer: (any RadioStreamer)?
     private var downloadTask: Task<Void, Never>?
     private var showFetchTask: Task<Void, Never>?
     private let bufferRing: RawBufferRing
@@ -522,6 +564,9 @@ final class RadioPlayer {
     private(set) var state: PlaybackState = .idle
     private(set) var audioMode: AudioMode = .fm
     private(set) var nowPlayingShow: ShowInfo?
+    /// Song/talk title for live-stream stations (from ICY metadata); RÚV stations
+    /// use the schedule-based `nowPlayingShow` instead.
+    private(set) var nowPlayingLiveTitle: String?
 
     // MARK: - Public API
 
@@ -556,6 +601,7 @@ final class RadioPlayer {
         streamer = nil
         state = .idle
         nowPlayingShow = nil
+        nowPlayingLiveTitle = nil
         streamStartTime = nil
         activeStation = nil
         showSchedule = []
@@ -703,9 +749,9 @@ final class RadioPlayer {
     // MARK: - Private
 
     private func startStream(for station: Station) async {
-        let hlsStreamer = HLSStreamer()
-        self.streamer = hlsStreamer
-        await hlsStreamer.start(station: station)
+        let streamer: any RadioStreamer = station.isHLS ? HLSStreamer() : LiveStreamer()
+        self.streamer = streamer
+        await streamer.start(station: station)
 
         let dspRef = dsp
         let ring = bufferRing
@@ -715,23 +761,27 @@ final class RadioPlayer {
         activeStation = station
         streamStartTime = Date()
 
-        // Fetch show schedule for the station
-        showFetchTask?.cancel()
-        showFetchTask = Task {
-            await fetchShowSchedule(for: station)
-            // Periodically update current show every 30 seconds
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 30 * 1_000_000_000)
-                if !Task.isCancelled {
-                    updateCurrentShow()
+        // Schedule-based "now playing" only exists for RÚV stations.
+        if station.isRUV {
+            showFetchTask?.cancel()
+            showFetchTask = Task {
+                await fetchShowSchedule(for: station)
+                // Periodically update current show every 30 seconds
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 30 * 1_000_000_000)
+                    if !Task.isCancelled {
+                        updateCurrentShow()
+                    }
                 }
             }
+        } else {
+            nowPlayingShow = nil
         }
 
         downloadTask = Task { [weak self] in
             var engineStarted = false
 
-            for await buffer in await hlsStreamer.buffers {
+            for await buffer in await streamer.buffers {
                 guard let self, !Task.isCancelled else { break }
 
                 ring.push(buffer)
@@ -759,6 +809,14 @@ final class RadioPlayer {
                     node.play()
                     self.state = .playing(station)
                     engineStarted = true
+                }
+
+                // Live stations report their song/talk title via ICY metadata.
+                if let live = streamer as? LiveStreamer {
+                    let title = await live.currentTitle
+                    if title != self.nowPlayingLiveTitle {
+                        self.nowPlayingLiveTitle = title
+                    }
                 }
 
                 let copy = ring.snapshot().last!

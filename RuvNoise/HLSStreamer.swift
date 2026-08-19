@@ -2,7 +2,7 @@ import AVFoundation
 import Foundation
 
 /// Continuously fetches HLS segments and decodes them to PCM buffers.
-actor HLSStreamer {
+actor HLSStreamer: RadioStreamer {
     private let session = URLSession.shared
     private var mediaPlaylistURL: URL?
     private var lastSequence: Int = -1
@@ -19,7 +19,7 @@ actor HLSStreamer {
         continuation = cont
     }
 
-    func start(station: Station) {
+    func start(station: Station) async {
         guard !isRunning else { return }
         isRunning = true
         lastSequence = -1
@@ -28,7 +28,7 @@ actor HLSStreamer {
         Task { await resolveAndStream(station: station) }
     }
 
-    func stop() {
+    func stop() async {
         isRunning = false
         continuation.finish()
     }

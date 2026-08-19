@@ -40,19 +40,38 @@ private struct MenuContent: View {
     let updater: Updater
 
     var body: some View {
-        ForEach(Station.allCases, id: \.self) { station in
-            Toggle(station.rawValue, isOn: Binding(
-                get: { player.state.isStation(station) },
-                set: { _ in
-                    scheduler.userDidInteract()
-                    Task { await player.selectStation(station) }
-                }
-            ))
+        Section("RÚV") {
+            ForEach(Station.ruvStations, id: \.self) { station in
+                Toggle(station.rawValue, isOn: Binding(
+                    get: { player.state.isStation(station) },
+                    set: { _ in
+                        scheduler.userDidInteract()
+                        Task { await player.selectStation(station) }
+                    }
+                ))
+            }
         }
-        if player.state.isActive, let show = player.nowPlayingShow {
-            Text("\(show.title) • \(formatTime(show.startTime))")
-                .foregroundStyle(.secondary)
-                .font(.caption)
+        Section("Aðrar stöðvar") {
+            ForEach(Station.liveStations, id: \.self) { station in
+                Toggle(station.rawValue, isOn: Binding(
+                    get: { player.state.isStation(station) },
+                    set: { _ in
+                        scheduler.userDidInteract()
+                        Task { await player.selectStation(station) }
+                    }
+                ))
+            }
+        }
+        if player.state.isActive {
+            if let show = player.nowPlayingShow {
+                Text("\(show.title) • \(formatTime(show.startTime))")
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+            } else if let title = player.nowPlayingLiveTitle {
+                Text(title)
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+            }
         }
         Divider()
         Toggle("Spila fréttir sjálfkrafa", isOn: Binding(
