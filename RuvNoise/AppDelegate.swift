@@ -42,35 +42,12 @@ private struct MenuContent: View {
     var body: some View {
         Section("RÚV") {
             ForEach(Station.ruvStations, id: \.self) { station in
-                Toggle(station.rawValue, isOn: Binding(
-                    get: { player.state.isStation(station) },
-                    set: { _ in
-                        scheduler.userDidInteract()
-                        Task { await player.selectStation(station) }
-                    }
-                ))
+                StationRow(station: station, player: player, scheduler: scheduler)
             }
         }
         Section("Aðrar stöðvar") {
             ForEach(Station.liveStations, id: \.self) { station in
-                Toggle(station.rawValue, isOn: Binding(
-                    get: { player.state.isStation(station) },
-                    set: { _ in
-                        scheduler.userDidInteract()
-                        Task { await player.selectStation(station) }
-                    }
-                ))
-            }
-        }
-        if player.state.isActive {
-            if let show = player.nowPlayingShow {
-                Text("\(show.title) • \(formatTime(show.startTime))")
-                    .foregroundStyle(.secondary)
-                    .font(.caption)
-            } else if let title = player.nowPlayingLiveTitle {
-                Text(title)
-                    .foregroundStyle(.secondary)
-                    .font(.caption)
+                StationRow(station: station, player: player, scheduler: scheduler)
             }
         }
         Divider()
@@ -99,6 +76,46 @@ private struct MenuContent: View {
         Button("Quit") {
             player.stop()
             NSApplication.shared.terminate(nil)
+        }
+    }
+
+    private func formatTime(_ date: Date) -> String {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "HH:mm"
+        return fmt.string(from: date)
+    }
+}
+
+/// A station toggle with its now-playing line attached underneath when active:
+/// the scheduled show (RÚV) or the ICY song title (live stations).
+private struct StationRow: View {
+    let station: Station
+    let player: RadioPlayer
+    let scheduler: NewsScheduler
+
+    var body: some View {
+        Toggle(station.rawValue, isOn: Binding(
+            get: { player.state.isStation(station) },
+            set: { _ in
+                scheduler.userDidInteract()
+                Task { await player.selectStation(station) }
+            }
+        ))
+        if player.state.isStation(station) {
+            nowPlayingLine()
+        }
+    }
+
+    @ViewBuilder
+    private func nowPlayingLine() -> some View {
+        if let show = player.nowPlayingShow {
+            Text("\(show.title) • \(formatTime(show.startTime))")
+                .foregroundStyle(.secondary)
+                .font(.caption)
+        } else if let title = player.nowPlayingLiveTitle {
+            Text(title)
+                .foregroundStyle(.secondary)
+                .font(.caption)
         }
     }
 
