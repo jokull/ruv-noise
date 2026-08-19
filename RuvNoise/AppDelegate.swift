@@ -106,6 +106,10 @@ private struct StationRow: View {
         }
     }
 
+    // Explicit @MainActor: Xcode 15 (macos-14 CI) infers isolation for View.body
+    // but not for sibling methods — reading RadioPlayer's @MainActor state from a
+    // non-isolated helper fails to compile there.
+    @MainActor
     @ViewBuilder
     private func nowPlayingLine() -> some View {
         if let show = player.nowPlayingShow {

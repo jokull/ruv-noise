@@ -32,6 +32,7 @@ Never hardcode a separate build number: **Sparkle compares `CFBundleVersion` (th
 
 - **`Data.removeFirst(_:)` is broken on macOS 26 Foundation**: it leaves a stale `startIndex` (e.g. `removeFirst(321)` → `startIndex == 321`), so the next `data[0]` subscript traps with SIGTRAP. Use `removeSubrange(0..<n)` or `Data(dropFirst(n))`. Never use `removeFirst` in this codebase.
 - `project.pbxproj` is hand-edited with stable custom IDs (`A10001…`); run `plutil -lint` after any edit.
+- SwiftUI: Xcode 15 (the macos-14 CI leg) infers `@MainActor` for `View.body` but **not** for sibling methods — helper views/methods that read `@MainActor` state (e.g. `RadioPlayer` properties) must be annotated `@MainActor` explicitly or the macos-14 build fails.
 - Streams: RÚV = `ruv-radio-live.akamaized.net/streymi/<channel>/<channel>.m3u8` (HLS). Sýn/Vísir = `icecast.365net.is:8000/orb*.aac` (AAC+ ICEcast). Árvakur = `ice-11.spilarinn.is/*` (MP3). Some stations send empty ICY titles — that's source-side, not a bug.
 - Do not commit build products (`build/`, `*.dmg`). Keep scratch files in `/tmp`.
 
