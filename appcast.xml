@@ -6,6 +6,14 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>RuvNoise</title>
         <item>
+            <title>2.4.1</title>
+            <pubDate>Wed, 19 Aug 2026 13:28:20 +0000</pubDate>
+            <sparkle:version>2.4.1</sparkle:version>
+            <sparkle:shortVersionString>2.4.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/jokull/ruv-noise/releases/download/v2.4.1/RuvNoise.dmg" length="3982879" type="application/octet-stream" sparkle:edSignature="IQIYrAZ7unRHphr5FXUoR9pg05LVU0QtdlNb/4ryrYk1tmhMS4aTxubxMej7nKJ9SVGnn9V0pUcEdzHbewUrCw=="/>
+        </item>
+        <item>
             <title>2.3.0</title>
             <pubDate>Tue, 18 Aug 2026 21:49:27 +0000</pubDate>
             <sparkle:version>1</sparkle:version>
@@ -16,6 +24,6 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: rQHL4fUhSRpPn2YOv4no66+4KszugjbqJZFEWiApRa5GHtGhVCymsR4C16/5mPUJnhz5T+DsBcWx8aO1tQKNBg==
-length: 1026
+edSignature: v+8tByh8ZgMZ9CLqzAX4EyLZfYOe4Qk7phhNJPXBedQeK/k0COdVvvsl1G8Ds1HHaznG6Y3vl/4ivszsH54bAw==
+length: 1624
 -->
